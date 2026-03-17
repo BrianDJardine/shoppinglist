@@ -13,69 +13,68 @@ from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
+from kivy.clock import Clock
 
-# --- SWIPE TO DONE LOGIC ---
-class SwipeItem(BoxLayout):
+class ListItem(BoxLayout):
     def __init__(self, item_ref, text, background_color, **kwargs):
-        app = App.get_running_app()
         super().__init__(**kwargs)
-        self.item_ref, self.offset_x = item_ref, 0
+        app = App.get_running_app()
+        self.item_ref = item_ref
         self.orientation = 'horizontal'
         self.size_hint_y = None
-        # Use the height calculated in update_font_metrics
-        self.height = app.row_height 
-        self.padding, self.spacing = dp(5), dp(10)
-        
+        self.height = app.row_height
+        self.padding = [dp(10), dp(5)]
+        self.spacing = dp(10)
+
         with self.canvas.before:
-            Color(0.8, 0.2, 0.2, 1) 
-            self.back_rect = Rectangle(size=self.size, pos=self.pos)
-            self.color_instruction = Color(*background_color)
+            Color(*background_color)
             self.rect = Rectangle(size=self.size, pos=self.pos)
-            
         self.bind(size=self._update_rect, pos=self._update_rect)
 
-        self.minus_btn = Button(text="-", size_hint=(None, 1), width=dp(65),
-                                background_color=(0.7, 0.3, 0.3, 1), font_size='30sp', bold=True)
-        self.minus_btn.bind(on_release=lambda x: App.get_running_app().adjust_quantity(self.item_ref, -1))
-                
-        # Use dynamic font size from App
-        self.label = Label(text=text, markup=True, halign='left', valign='middle', 
-                           font_size=app.f_size, bold=True, color=(0, 0, 0, 1))       
-        self.label.bind(size=self.label.setter('text_size'))
-        
-        self.plus_btn = Button(text="+", size_hint=(None, 1), width=dp(65),
-                               background_color=(0.3, 0.7, 0.3, 1), font_size='30sp', bold=True)
-        self.plus_btn.bind(on_release=lambda x: App.get_running_app().adjust_quantity(self.item_ref, 1))
+        # --- LEFT: ACTION BOX ---
+        self.check_btn = Button(
+            text="", 
+            size_hint=(None, None), 
+            size=(dp(45), dp(45)),
+            pos_hint={'center_y': 0.5},
+            background_normal='', 
+            background_color=(0.9, 0.9, 0.9, 1) # Off-white/Light gray
+        )
+        self.check_btn.bind(on_release=self.trigger_done)
+        self.add_widget(self.check_btn)
 
-        self.add_widget(self.minus_btn); self.add_widget(self.label); self.add_widget(self.plus_btn)
+        # --- MIDDLE: ITEM TEXT ---
+        self.label = Label(
+            text=text, markup=True, halign='left', valign='middle', 
+            font_size=app.f_size, bold=True, color=(0, 0, 0, 1)
+        )
+        self.label.bind(size=self.label.setter('text_size'))
+        self.add_widget(self.label)
+
+        # --- RIGHT: QUANTITY GROUP (- and +) ---
+        qty_box = BoxLayout(size_hint=(None, 1), width=dp(110), spacing=dp(2))
+        
+        minus_btn = Button(text="-", background_color=(0.7, 0.3, 0.3, 1), font_size='22sp', bold=True)
+        minus_btn.bind(on_release=lambda x: app.adjust_quantity(self.item_ref, -1))
+        
+        plus_btn = Button(text="+", background_color=(0.3, 0.7, 0.3, 1), font_size='22sp', bold=True)
+        plus_btn.bind(on_release=lambda x: app.adjust_quantity(self.item_ref, 1))
+        
+        qty_box.add_widget(minus_btn)
+        qty_box.add_widget(plus_btn)
+        self.add_widget(qty_box)
 
     def _update_rect(self, *args):
-        self.back_rect.pos = self.pos
-        self.back_rect.size = self.size
-        self.rect.pos = (self.x + self.offset_x, self.y)
+        self.rect.pos = self.pos
         self.rect.size = self.size
 
-    def on_touch_down(self, touch):
-        if self.minus_btn.collide_point(*touch.pos) or self.plus_btn.collide_point(*touch.pos):
-            return super().on_touch_down(touch)
-        if self.collide_point(*touch.pos):
-            touch.ud['start_x'] = touch.x
-            touch.grab(self); return True
-        return super().on_touch_down(touch)
-
-    def on_touch_move(self, touch):
-        if touch.grab_current is self:
-            dx = touch.x - touch.ud['start_x']
-            if dx < 0:
-                self.offset_x = dx; self._update_rect()
-                if dx < -dp(180): App.get_running_app().mark_done(self.item_ref)
-                return True
-        return super().on_touch_move(touch)
-
-    def on_touch_up(self, touch):
-        if touch.grab_current is self:
-            self.offset_x = 0; self._update_rect(); touch.ungrab(self); return True
-        return super().on_touch_up(touch)
+    def trigger_done(self, instance):
+        # Visual feedback: Just turn the box green
+        self.check_btn.background_color = (0.2, 0.8, 0.2, 1) 
+        self.check_btn.text = "" 
+        
+        # delay
+        Clock.schedule_once(lambda dt: App.get_running_app().mark_done(self.item_ref), 0.5)
 
 # --- CATEGORY SCREEN ---
 class CategoryScreen(Screen):
@@ -225,7 +224,7 @@ class SettingsScreen(Screen):
         layout.add_widget(Label(text="List Font Size:", size_hint_y=None, height=dp(30)))
         self.font_spinner = Spinner(
             text=App.get_running_app().font_scale,
-            values=("Small", "Medium", "Large"),
+            values=("Smallest", "Small", "Medium", "Large"),
             size_hint_y=None, height=dp(50),
             background_color=(0.3, 0.3, 0.3, 1), bold=True
         )
@@ -266,7 +265,6 @@ class ShoppingApp(App):
         self.load_data()
         self.prediction_drop = DropDown()
         self.sm = ScreenManager()
-        self.f_size = dp(28)
 
         self.main_page = Screen(name='main')
         main_layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(8))
@@ -318,9 +316,28 @@ class ShoppingApp(App):
         main_layout.add_widget(scroll)
 
         bot = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
+        
         self.done_btn = Button(text="SHOW DONE", on_press=self.toggle_completed, bold=True)
+
+        # Darker Red for Delete Done
+        del_done_btn = Button(
+            text="DELETE DONE", 
+            background_color=(0.7, 0.3, 0.3, 1), 
+            bold=True,
+            on_press=lambda x: self.confirm_action("Delete purchased items?", self.clear_completed)
+        )
+
+        # Lighter Red for Clear List
+        clear_btn = Button(
+            text="CLEAR LIST", 
+            background_color=(0.9, 0.4, 0.4, 1), 
+            bold=True,
+            on_press=lambda x: self.confirm_action("Wipe ENTIRE list?", self.clear_entire_list)
+        )
+                
         bot.add_widget(self.done_btn)
-        bot.add_widget(Button(text="PURGE", background_color=(.7,.4,.4,1), on_press=self.clear_completed, bold=True))
+        bot.add_widget(clear_btn)
+        bot.add_widget(del_done_btn)
         main_layout.add_widget(bot)
 
         self.main_page.add_widget(main_layout); self.sm.add_widget(self.main_page)
@@ -331,10 +348,11 @@ class ShoppingApp(App):
 
     # --- DATA ---
     def load_data(self):
+        # Default values
         self.categories = {'Uncategorized':{'order':99,'keywords':[]}}
         self.all_lists = {'Groceries':[]}
         self.active_list_name = 'Groceries'
-        self.font_scale = 'Large' # Default
+        self.font_scale = 'Large' 
 
         if os.path.exists(self.data_file):
             try:
@@ -344,28 +362,33 @@ class ShoppingApp(App):
                     self.all_lists = d.get('all_lists', self.all_lists)
                     self.active_list_name = d.get('active_list_name', self.active_list_name)
                     self.font_scale = d.get('font_scale', 'Large')
-            except:
-                pass
+            except Exception as e:
+                print(f"Error loading: {e}")
+        
         self.update_font_metrics()
 
     def update_font_metrics(self):
-        if self.font_scale == "Small":
-            self.f_size = dp(18)
-            self.row_height = dp(65)
+        if self.font_scale == "Smallest":
+            self.f_size, self.row_height = dp(14), dp(55)
+        elif self.font_scale == "Small":
+            self.f_size, self.row_height = dp(18), dp(65)
         elif self.font_scale == "Medium":
-            self.f_size = dp(23)
-            self.row_height = dp(75)
+            self.f_size, self.row_height = dp(23), dp(75)
         else: # Large
-            self.f_size = dp(28)
-            self.row_height = dp(85)
+            self.f_size, self.row_height = dp(28), dp(85)
 
     def change_font_size(self, size):
-        # Only trigger if the size actually changed to avoid unnecessary UI refreshes
         if size != self.font_scale:
             self.font_scale = size
             self.update_font_metrics()
+            self.item_input.font_size = self.f_size # Fixes immediate feedback
             self.save_data()
             self.refresh_ui()
+
+    def clear_entire_list(self, *args):
+        self.all_lists[self.active_list_name] = []
+        self.save_data()
+        self.refresh_ui()
 
     def save_data(self):
         with open(self.data_file, 'w') as f:
@@ -408,18 +431,30 @@ class ShoppingApp(App):
     # --- UI & LISTS ---
     def refresh_ui(self, *args):
         self.list_layout.clear_widgets()
-        active_bg, done_bg = (1, 1, 1, 1), (0.75, 0.75, 0.75, 1)
+        active_bg = (1, 1, 1, 1)
+        done_bg = (0.85, 0.85, 0.85, 1)
+        
         items = sorted(self.all_lists.get(self.active_list_name, []), 
                        key=lambda x: self.categories.get(x['cat'], {'order': 99})['order'])
+        
         curr_cat = None
         for i in items:
             if i['done'] and not self.show_completed: continue
+            
             if i['cat'] != curr_cat:
                 curr_cat = i['cat']
-                self.list_layout.add_widget(Label(text=f"-- {curr_cat.upper()} --", size_hint_y=None, height=dp(40), bold=True, color=(0.5, 0.5, 0.5, 1)))
-            qty = f" [b]x{i.get('count', 1)}[/b]" if i.get('count', 1) > 1 else ""
-            row = SwipeItem(item_ref=i, text=f"[s]{i['name']}{qty}[/s]" if i['done'] else f"{i['name']}{qty}", 
-                background_color=(done_bg if i['done'] else active_bg))
+                self.list_layout.add_widget(Label(text=f"-- {curr_cat.upper()} --", 
+                                            size_hint_y=None, height=dp(40), 
+                                            bold=True, color=(0.5, 0.5, 0.5, 1)))
+            
+            qty_val = i.get('count', 1)
+            qty_text = f" [b]x{qty_val}[/b]" if qty_val > 1 else ""
+            
+            row = ListItem(
+                item_ref=i, 
+                text=f"[s]{i['name']}{qty_text}[/s]" if i['done'] else f"{i['name']}{qty_text}", 
+                background_color=(done_bg if i['done'] else active_bg)
+            )
             self.list_layout.add_widget(row)
 
     def create_new_list(self, instance):
@@ -476,7 +511,11 @@ class ShoppingApp(App):
             self.add_to_list(name, value); self.cat_selector.height, self.cat_selector.opacity = 0, 0
 
     def toggle_completed(self, instance): self.show_completed = not self.show_completed; self.done_btn.text = "HIDE DONE" if self.show_completed else "SHOW DONE"; self.refresh_ui()
-    def clear_completed(self, instance): self.all_lists[self.active_list_name] = [i for i in self.all_lists[self.active_list_name] if not i['done']]; self.save_data(); self.refresh_ui()
+    def clear_completed(self, *args): 
+        # The *args handles both button instances and popup triggers
+        self.all_lists[self.active_list_name] = [i for i in self.all_lists[self.active_list_name] if not i['done']]
+        self.save_data()
+        self.refresh_ui()
     def switch_list(self, spinner, text): self.active_list_name = text; self.save_data(); self.refresh_ui()
     def confirm_action(self, msg, callback):
         content = BoxLayout(orientation='vertical', padding=dp(10)); content.add_widget(Label(text=msg))
