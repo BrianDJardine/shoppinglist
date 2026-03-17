@@ -82,8 +82,28 @@ class CategoryScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        self.layout.add_widget(Label(text="MANAGE CATEGORIES", font_size=dp(22), bold=True, size_hint_y=None, height=dp(40)))
+
+        # --- ENHANCED HEADER ROW ---
+        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10), padding=[dp(10), 0])
+        with header.canvas.before:
+            Color(0.15, 0.15, 0.15, 1)  # Dark charcoal header background
+            self.rect = Rectangle(size=header.size, pos=header.pos)
+        header.bind(size=self._update_header_rect, pos=self._update_header_rect)
+
+        back_btn = Button(
+            background_normal='back.png', 
+            size_hint=(None, None), 
+            size=(dp(35), dp(35)), 
+            pos_hint={'center_y': 0.5},
+            background_color=(1, 1, 1, 1) # Ensure it stays white
+        )
+        back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
         
+        header.add_widget(back_btn)
+        header.add_widget(Label(text="CATEGORIES", font_size=dp(20), bold=True, halign='left'))
+        self.layout.add_widget(header)
+        # ----------------------
+
         add_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         self.new_cat_input = TextInput(hint_text="New Category Name...", multiline=False)
         add_btn = Button(text="ADD", size_hint_x=0.3, background_color=(0.2, 0.7, 0.3, 1), bold=True)
@@ -96,11 +116,13 @@ class CategoryScreen(Screen):
         scroll = ScrollView(); scroll.add_widget(self.cat_list_layout)
         self.layout.add_widget(scroll)
 
-        back_btn = Button(text="BACK TO LIST", size_hint_y=None, height=dp(55), bold=True)
-        back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
-        self.layout.add_widget(back_btn); self.add_widget(self.layout)
-
+        self.add_widget(self.layout)
+        
     def on_pre_enter(self): self.refresh_categories()
+
+    def _update_header_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
 
     def refresh_categories(self):
         self.cat_list_layout.clear_widgets()
@@ -178,28 +200,39 @@ class CategoryScreen(Screen):
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
-        layout.add_widget(Label(text="SETTINGS & DATA", font_size=dp(24), bold=True, size_hint_y=None, height=dp(50)))
+        layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(15))
         
-        # --- FONT SIZE DROPDOWN (SPINNER) ---
+        # --- ENHANCED HEADER ROW ---
+        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10), padding=[dp(10), 0])
+        with header.canvas.before:
+            Color(0.15, 0.15, 0.15, 1)  # Dark charcoal header background
+            self.rect = Rectangle(size=header.size, pos=header.pos)
+        header.bind(size=self._update_header_rect, pos=self._update_header_rect)
+
+        back_btn = Button(
+            background_normal='back.png', 
+            size_hint=(None, None), 
+            size=(dp(35), dp(35)), 
+            pos_hint={'center_y': 0.5},
+            background_color=(1, 1, 1, 1) # Ensure it stays white
+        )
+        back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
+        
+        header.add_widget(back_btn)
+        header.add_widget(Label(text="SETTINGS", font_size=dp(20), bold=True, halign='left'))
+        layout.add_widget(header)
+
         layout.add_widget(Label(text="List Font Size:", size_hint_y=None, height=dp(30)))
-        
-        # The Spinner acts as your dropdown
         self.font_spinner = Spinner(
             text=App.get_running_app().font_scale,
             values=("Small", "Medium", "Large"),
-            size_hint_y=None,
-            height=dp(50),
-            background_color=(0.3, 0.3, 0.3, 1),
-            bold=True
+            size_hint_y=None, height=dp(50),
+            background_color=(0.3, 0.3, 0.3, 1), bold=True
         )
-        self.font_spinner.bind(text=lambda spinner, text: App.get_running_app().change_font_size(text))
+        self.font_spinner.bind(text=lambda s, t: App.get_running_app().change_font_size(t))
         layout.add_widget(self.font_spinner)
-        
-        # Spacer
-        layout.add_widget(Widget(size_hint_y=None, height=dp(20)))
 
-        # Existing Buttons
+        # Existing utility buttons
         m_btn = Button(text="RESTORE MASTER LIST", size_hint_y=None, height=dp(65), background_color=(0.2, 0.5, 0.8, 1), bold=True)
         m_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Reset to Master Template?", App.get_running_app().restore_from_master_file))
         layout.add_widget(m_btn)
@@ -212,17 +245,15 @@ class SettingsScreen(Screen):
         im_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Overwrite with Imported Data?", App.get_running_app().import_data))
         layout.add_widget(im_btn)
         
-        layout.add_widget(Widget()) 
-        back_btn = Button(text="BACK TO LIST", size_hint_y=None, height=dp(60), background_color=(0.3, 0.3, 0.3, 1), bold=True)
-        back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
-        layout.add_widget(back_btn)
-        
+        layout.add_widget(Widget()) # Pushes everything to the top
         self.add_widget(layout)
 
     def on_pre_enter(self):
-        # Ensure the dropdown shows the current setting when you open the screen
         self.font_spinner.text = App.get_running_app().font_scale
 
+    def _update_header_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
 
 # --- MAIN APP ---
 class ShoppingApp(App):

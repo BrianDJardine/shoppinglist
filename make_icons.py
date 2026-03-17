@@ -2,13 +2,49 @@ from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Line, InstructionGroup
 from kivy.clock import Clock
+from PIL import Image, ImageDraw
 import os
 
 class IconGenerator(App):
     def build(self):
         # We run the generation after one frame to ensure the canvas is ready
+        # go back icon    
+        self.create_back_icon()
         Clock.schedule_once(self.create_all_icons, 0.1)
         return Widget()
+
+    def create_back_icon(self):
+       # 1. Setup a 128x128 transparent canvas
+        size = (128, 128)
+        img = Image.new("RGBA", size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(img)
+        
+        color = "white" # Change to "black" if your header is light
+        
+        # 2. Define the thickness of the arrow shaft and head
+        shaft_thickness = 18
+        head_width = 45 
+        
+        # 3. Draw the Arrow Head (The Triangle)
+        # Tip is at the far left (x=10), base is at x=55
+        head_points = [
+            (10, 64),          # Far left tip (centered vertically)
+            (55, 64 - head_width), # Top back corner
+            (55, 64 + head_width)  # Bottom back corner
+        ]
+        draw.polygon(head_points, fill=color)
+
+        # 4. Draw the Arrow Shaft (The Rectangle)
+        # Starts from the back of the triangle and goes to the right
+        shaft_top = 64 - (shaft_thickness // 2)
+        shaft_bottom = 64 + (shaft_thickness // 2)
+        # [left, top, right, bottom]
+        draw.rectangle([50, shaft_top, 110, shaft_bottom], fill=color)
+     
+        # 5. Save the file
+        name = "back.png"
+        img.save(name)
+        print(f"File generated: {os.path.abspath(name)}")
 
     def create_all_icons(self, dt):
         # 1. NEW (+)
@@ -69,7 +105,6 @@ class IconGenerator(App):
         w = Widget(size=(128, 128))
         w.canvas.add(settings_ig)
         w.export_to_png('settings.png')
-
 
         print("\nSUCCESS: All icons created. You can close the window now.")
         self.stop() # Automatically closes the app once done
