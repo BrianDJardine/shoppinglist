@@ -17,10 +17,13 @@ from kivy.metrics import dp
 # --- SWIPE TO DONE LOGIC ---
 class SwipeItem(BoxLayout):
     def __init__(self, item_ref, text, background_color, **kwargs):
-        f_size = kwargs.pop('font_size', dp(28))
+        app = App.get_running_app()
         super().__init__(**kwargs)
         self.item_ref, self.offset_x = item_ref, 0
-        self.orientation, self.size_hint_y, self.height = 'horizontal', None, dp(85)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        # Use the height calculated in update_font_metrics
+        self.height = app.row_height 
         self.padding, self.spacing = dp(5), dp(10)
         
         with self.canvas.before:
@@ -35,8 +38,9 @@ class SwipeItem(BoxLayout):
                                 background_color=(0.7, 0.3, 0.3, 1), font_size='30sp', bold=True)
         self.minus_btn.bind(on_release=lambda x: App.get_running_app().adjust_quantity(self.item_ref, -1))
                 
+        # Use dynamic font size from App
         self.label = Label(text=text, markup=True, halign='left', valign='middle', 
-                           font_size=f_size, bold=True, color=(0, 0, 0, 1))
+                           font_size=app.f_size, bold=True, color=(0, 0, 0, 1))       
         self.label.bind(size=self.label.setter('text_size'))
         
         self.plus_btn = Button(text="+", size_hint=(None, 1), width=dp(65),
@@ -177,6 +181,25 @@ class SettingsScreen(Screen):
         layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
         layout.add_widget(Label(text="SETTINGS & DATA", font_size=dp(24), bold=True, size_hint_y=None, height=dp(50)))
         
+        # --- FONT SIZE DROPDOWN (SPINNER) ---
+        layout.add_widget(Label(text="List Font Size:", size_hint_y=None, height=dp(30)))
+        
+        # The Spinner acts as your dropdown
+        self.font_spinner = Spinner(
+            text=App.get_running_app().font_scale,
+            values=("Small", "Medium", "Large"),
+            size_hint_y=None,
+            height=dp(50),
+            background_color=(0.3, 0.3, 0.3, 1),
+            bold=True
+        )
+        self.font_spinner.bind(text=lambda spinner, text: App.get_running_app().change_font_size(text))
+        layout.add_widget(self.font_spinner)
+        
+        # Spacer
+        layout.add_widget(Widget(size_hint_y=None, height=dp(20)))
+
+        # Existing Buttons
         m_btn = Button(text="RESTORE MASTER LIST", size_hint_y=None, height=dp(65), background_color=(0.2, 0.5, 0.8, 1), bold=True)
         m_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Reset to Master Template?", App.get_running_app().restore_from_master_file))
         layout.add_widget(m_btn)
@@ -192,7 +215,14 @@ class SettingsScreen(Screen):
         layout.add_widget(Widget()) 
         back_btn = Button(text="BACK TO LIST", size_hint_y=None, height=dp(60), background_color=(0.3, 0.3, 0.3, 1), bold=True)
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
-        layout.add_widget(back_btn); self.add_widget(layout)
+        layout.add_widget(back_btn)
+        
+        self.add_widget(layout)
+
+    def on_pre_enter(self):
+        # Ensure the dropdown shows the current setting when you open the screen
+        self.font_spinner.text = App.get_running_app().font_scale
+
 
 # --- MAIN APP ---
 class ShoppingApp(App):
@@ -270,19 +300,50 @@ class ShoppingApp(App):
 
     # --- DATA ---
     def load_data(self):
+        self.categories = {'Uncategorized':{'order':99,'keywords':[]}}
+        self.all_lists = {'Groceries':[]}
+        self.active_list_name = 'Groceries'
+        self.font_scale = 'Large' # Default
+
         if os.path.exists(self.data_file):
             try:
                 with open(self.data_file, 'r') as f:
                     d = json.load(f)
-                    self.categories = d.get('categories', {})
-                    self.all_lists = d.get('all_lists', {'Groceries': []})
-                    self.active_list_name = d.get('active_list_name', 'Groceries')
-            except: self.categories = {'Uncategorized':{'order':99,'keywords':[]}}; self.all_lists = {'Groceries':[]}; self.active_list_name = 'Groceries'
-        else: self.categories = {'Uncategorized':{'order':99,'keywords':[]}}; self.all_lists = {'Groceries':[]}; self.active_list_name = 'Groceries'
+                    self.categories = d.get('categories', self.categories)
+                    self.all_lists = d.get('all_lists', self.all_lists)
+                    self.active_list_name = d.get('active_list_name', self.active_list_name)
+                    self.font_scale = d.get('font_scale', 'Large')
+            except:
+                pass
+        self.update_font_metrics()
+
+    def update_font_metrics(self):
+        if self.font_scale == "Small":
+            self.f_size = dp(18)
+            self.row_height = dp(65)
+        elif self.font_scale == "Medium":
+            self.f_size = dp(23)
+            self.row_height = dp(75)
+        else: # Large
+            self.f_size = dp(28)
+            self.row_height = dp(85)
+
+    def change_font_size(self, size):
+        # Only trigger if the size actually changed to avoid unnecessary UI refreshes
+        if size != self.font_scale:
+            self.font_scale = size
+            self.update_font_metrics()
+            self.save_data()
+            self.refresh_ui()
 
     def save_data(self):
         with open(self.data_file, 'w') as f:
-            json.dump({'categories': self.categories, 'all_lists': self.all_lists, 'active_list_name': self.active_list_name}, f, indent=4)
+            json.dump({
+                'categories': self.categories, 
+                'all_lists': self.all_lists, 
+                'active_list_name': self.active_list_name,
+                'font_scale': self.font_scale
+            }, f, indent=4)
 
     def restore_from_master_file(self):
         try:
@@ -327,7 +388,7 @@ class ShoppingApp(App):
                 self.list_layout.add_widget(Label(text=f"-- {curr_cat.upper()} --", size_hint_y=None, height=dp(40), bold=True, color=(0.5, 0.5, 0.5, 1)))
             qty = f" [b]x{i.get('count', 1)}[/b]" if i.get('count', 1) > 1 else ""
             row = SwipeItem(item_ref=i, text=f"[s]{i['name']}{qty}[/s]" if i['done'] else f"{i['name']}{qty}", 
-                            background_color=(done_bg if i['done'] else active_bg), font_size=self.f_size)
+                background_color=(done_bg if i['done'] else active_bg))
             self.list_layout.add_widget(row)
 
     def create_new_list(self, instance):
