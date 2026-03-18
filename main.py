@@ -1,5 +1,6 @@
 import json, os, shutil
 import requests
+import certifi
 from datetime import datetime
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -491,7 +492,13 @@ class ShoppingApp(App):
             self.refresh_ui()
 
     def clear_entire_list(self, *args):
-        self.all_lists[self.active_list_name] = []
+        self.all_lists[self.active_list_name] = [{
+            'name': 'PLACEHOLDER', 
+            'done': False, 
+            'cat': 'Uncategorized',
+            'count': 1
+        }]        
+
         self.save_data()
         self.refresh_ui()
 
@@ -501,23 +508,38 @@ class ShoppingApp(App):
         return f"{self.BASE_URL}{self.family_id}.json"
 
     def save_data(self, instance=None):
+        # 1. Prepare the bundle for Firebase
         payload = {
             'categories': self.categories, 
             'all_lists': self.all_lists, 
             'active_list_name': self.active_list_name
         }
-        try: 
-            res = requests.put(self.cloud_url, json=payload, timeout=5)
-            if res.status_code == 200:
-                # Only notify if manually triggered from Settings
-                if instance:
-                    self.notify("Cloud Upload Successful!")
-        except: 
-            self.notify("Upload Failed: No Connection")
         
-        # Always save local settings quietly
+        try:
+            # 2. USE PUT TO UPLOAD. 
+            # We use verify=certifi.where() so it works on your phone too.
+            res = requests.put(
+                self.cloud_url, 
+                json=payload, 
+                timeout=10, 
+                verify=certifi.where()
+            )
+            
+            if res.status_code == 200:
+                self.sync_label.text = f"Cloud Updated: {datetime.now().strftime('%H:%M:%S')}"
+                # Only show the popup if we manually clicked a "Save" or "Force" button
+                if instance and hasattr(instance, 'text') and "Force" in instance.text:
+                    self.notify("Cloud Upload Successful!")
+            else:
+                self.notify(f"Upload Error: {res.status_code}")
+                
+        except Exception as e:
+            self.notify(f"Upload Failed: {type(e).__name__}")
+
+        # 3. Keep saving your local settings (ID, Font) to the phone/PC disk
         local = {'font_scale': self.font_scale, 'family_id': self.family_id}
-        with open(os.path.join(self.user_data_dir, "local_settings.json"), 'w') as f: 
+        local_path = os.path.join(self.user_data_dir, "local_settings.json")
+        with open(local_path, 'w') as f:
             json.dump(local, f)
 
     def restore_from_master_file(self):
@@ -555,22 +577,37 @@ class ShoppingApp(App):
         active_bg = (1, 1, 1, 1)
         done_bg = (0.85, 0.85, 0.85, 1)
         
-        items = sorted(self.all_lists.get(self.active_list_name, []), 
-                       key=lambda x: self.categories.get(x['cat'], {'order': 99})['order'])
+        # 1. Get the raw items
+        raw_items = self.all_lists.get(self.active_list_name, [])
+        
+        # 2. Filter out the "PLACEHOLDER" if it's a string, or if it's a dict named placeholder
+        # This prevents the sorter from crashing
+        items_to_show = [i for i in raw_items if isinstance(i, dict) and i.get('name') != "PLACEHOLDER"]
+        
+        # 3. Sort the filtered items
+        items = sorted(items_to_show, 
+                       key=lambda x: self.categories.get(x.get('cat', 'Uncategorized'), {'order': 99})['order'])
         
         curr_cat = None
         for i in items:
-            if i['done'] and not self.show_completed: continue
+            # Standard "hide completed" check
+            if i.get('done') and not self.show_completed: 
+                continue
             
-            if i['cat'] != curr_cat:
-                curr_cat = i['cat']
-                self.list_layout.add_widget(Label(text=f"-- {curr_cat.upper()} --", 
-                                            size_hint_y=None, height=dp(40), 
-                                            bold=True, color=(0.5, 0.5, 0.5, 1)))
+            # Category Header Logic
+            if i.get('cat') != curr_cat:
+                curr_cat = i.get('cat', 'Uncategorized')
+                self.list_layout.add_widget(Label(
+                    text=f"-- {curr_cat.upper()} --", 
+                    size_hint_y=None, height=dp(40), 
+                    bold=True, color=(0.5, 0.5, 0.5, 1)
+                ))
             
+            # Quantity Logic
             qty_val = i.get('count', 1)
             qty_text = f" [b]x{qty_val}[/b]" if qty_val > 1 else ""
             
+            # Create the Row
             row = ListItem(
                 item_ref=i, 
                 text=f"[s]{i['name']}{qty_text}[/s]" if i['done'] else f"{i['name']}{qty_text}", 
@@ -579,8 +616,40 @@ class ShoppingApp(App):
             self.list_layout.add_widget(row)
 
     def create_new_list(self, instance):
-        n = f"List {len(self.all_lists)+1}"; self.all_lists[n] = []
-        self.list_spinner.values = list(self.all_lists.keys()); self.list_spinner.text = n; self.save_data()
+        # 1. Generate the name (List 1, List 2, etc.)
+        n = f"List {len(self.all_lists) + 1}"
+        
+        # 2. Initialize with a dictionary placeholder 
+        # This prevents Firebase from deleting the list while keeping refresh_ui happy
+        self.all_lists[n] = [{
+            'name': 'PLACEHOLDER', 
+            'done': False, 
+            'cat': 'Uncategorized',
+            'count': 1
+        }]
+        
+
+
+        # 3. Update the UI components
+        self.list_spinner.values = list(self.all_lists.keys())
+        self.list_spinner.text = n
+        
+        # 4. Save to Cloud and refresh the screen
+        self.save_data(instance=instance)
+        self.refresh_ui()
+
+    def add_item(self, text):
+        if not text: return
+        
+        current_list = self.all_lists[self.active_list_name]
+        
+         # Check if the list ONLY contains our placeholder dictionary
+        if len(current_list) == 1 and current_list[0].get('name') == "PLACEHOLDER":
+            current_list.clear()
+            
+        current_list.append(text)
+        self.save_data()
+        self.refresh_ui()
 
     def rename_list_popup(self, instance):
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
@@ -610,20 +679,70 @@ class ShoppingApp(App):
         else: self.save_data(); self.refresh_ui()
 
     def process_addition(self, instance):
-        name = self.item_input.text.strip().lower()
+        name = self.item_input.text.strip()
         if not name: return
-        cat = next((c for c, d in self.categories.items() if name in d['keywords']), "Uncategorized")
-        if cat == "Uncategorized":
-            self.cat_selector.values = [c for c in self.categories.keys() if c != "Uncategorized"]
-            self.cat_selector.height, self.cat_selector.opacity = dp(50), 1
-        else: self.add_to_list(name, cat)
+
+        # 1. Search for an existing category match
+        cat = None
+        for category_name, details in self.categories.items():
+            keywords = details.get('keywords', [])
+            if any(name.lower() == k.lower() for k in keywords):
+                cat = category_name
+                break
+        
+        # 2. Decision: Do we know the category or do we need to ask?
+        if cat:
+            # We found a match! Add it immediately
+            self.add_to_list(name, cat)
+            self.item_input.text = ""
+        else:
+            # No match found. Open the popup to ask the user.
+            self.show_category_popup(name)
+            # We don't clear the text yet so the user can see what they're categorizing
+
+    def show_category_popup(self, name):
+        content = GridLayout(cols=2, spacing=dp(10), padding=dp(10))
+        popup = Popup(title=f"Category for '{name}'", content=content, size_hint=(0.9, 0.6))
+
+        for cat in self.categories.keys():
+            btn = Button(text=cat, height=dp(50), size_hint_y=None)
+            # When clicked, add the item and the new keyword
+            btn.bind(on_release=lambda b, c=cat: self.finalize_addition(name, c, popup))
+            content.add_widget(btn)
+
+        popup.open()
+
+    def finalize_addition(self, name, cat, popup):
+        # 1. Add the keyword to the category so the app "learns" it for next time
+        if name.lower() not in [k.lower() for k in self.categories[cat].get('keywords', [])]:
+            if 'keywords' not in self.categories[cat]:
+                self.categories[cat]['keywords'] = []
+            self.categories[cat]['keywords'].append(name.lower())
+        
+        # 2. Add to list and close
+        self.add_to_list(name, cat)
+        popup.dismiss()
+        self.item_input.text = "" # Clear the input now
+        if hasattr(self, 'prediction_drop'):
+            self.prediction_drop.dismiss()
 
     def add_to_list(self, name, cat):
         target = self.all_lists[self.active_list_name]
-        found = next((i for i in target if i['name'] == name.capitalize() and not i['done']), None)
-        if found: found['count'] = found.get('count', 1) + 1
-        else: target.append({'name': name.capitalize(), 'cat': cat, 'done': False, 'count': 1})
-        self.item_input.text = ""; self.save_data(); self.refresh_ui()
+        
+        # Look for existing item (skip the placeholder while searching)
+        found = next((i for i in target if isinstance(i, dict) and i.get('name') == name.capitalize() and not i['done']), None)
+        
+        if found:
+            found['count'] = found.get('count', 1) + 1
+        else:
+            # If the list only contains our PLACEHOLDER dictionary, wipe it out before adding the first real item
+            if len(target) == 1 and isinstance(target[0], dict) and target[0].get('name') == "PLACEHOLDER":
+                target.clear()
+                
+            target.append({'name': name.capitalize(), 'done': False, 'cat': cat, 'count': 1})
+        
+        self.save_data()
+        self.refresh_ui()
 
     def on_manual_select(self, spinner, value):
         if value != 'Category?':
@@ -632,11 +751,22 @@ class ShoppingApp(App):
             self.add_to_list(name, value); self.cat_selector.height, self.cat_selector.opacity = 0, 0
 
     def toggle_completed(self, instance): self.show_completed = not self.show_completed; self.done_btn.text = "HIDE DONE" if self.show_completed else "SHOW DONE"; self.refresh_ui()
-    def clear_completed(self, *args): 
-        # The *args handles both button instances and popup triggers
-        self.all_lists[self.active_list_name] = [i for i in self.all_lists[self.active_list_name] if not i['done']]
+    
+    def clear_completed(self, instance):
+        current_list = self.all_lists[self.active_list_name]
+        
+        # Keep items if: 
+        # 1. They are NOT done 
+        # OR 
+        # 2. Their name is "PLACEHOLDER"
+        self.all_lists[self.active_list_name] = [
+            i for i in current_list 
+            if not i.get('done') or i.get('name') == "PLACEHOLDER"
+        ]
+        
         self.save_data()
         self.refresh_ui()
+
     def switch_list(self, spinner, text): self.active_list_name = text; self.save_data(); self.refresh_ui()
 
     def confirm_action(self, msg, callback):
@@ -717,7 +847,12 @@ class ShoppingApp(App):
 
         try:
             # Add a timeout so the app doesn't hang if the internet is slow
-            res = requests.get(self.cloud_url, timeout=5)
+            res = requests.get(
+                self.cloud_url, 
+                timeout=10, 
+                verify=certifi.where() # This tells the phone "Use these trusted IDs"
+            )
+
             if res.status_code == 200:
                 data = res.json()
                 if data:
