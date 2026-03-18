@@ -1,4 +1,6 @@
 import json, os, shutil
+import requests
+from datetime import datetime
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -14,6 +16,10 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.clock import Clock
+from kivy.uix.behaviors import ButtonBehavior
+from kivy.animation import Animation
+from kivy.graphics import Rotate, PushMatrix, PopMatrix
+from kivy.uix.relativelayout import RelativeLayout
 
 class ListItem(BoxLayout):
     def __init__(self, item_ref, text, background_color, **kwargs):
@@ -199,56 +205,90 @@ class CategoryScreen(Screen):
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(15))
+        # Main container
+        self.layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(15))
         
-        # --- ENHANCED HEADER ROW ---
-        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10), padding=[dp(10), 0])
+        # --- HEADER ---
+        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10))
         with header.canvas.before:
-            Color(0.15, 0.15, 0.15, 1)  # Dark charcoal header background
+            Color(0.15, 0.15, 0.15, 1)
             self.rect = Rectangle(size=header.size, pos=header.pos)
         header.bind(size=self._update_header_rect, pos=self._update_header_rect)
 
         back_btn = Button(
             background_normal='back.png', 
-            size_hint=(None, None), 
-            size=(dp(35), dp(35)), 
-            pos_hint={'center_y': 0.5},
-            background_color=(1, 1, 1, 1) # Ensure it stays white
+            size_hint=(None, None), size=(dp(35), dp(35)), 
+            pos_hint={'center_y': 0.5}
         )
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
-        
         header.add_widget(back_btn)
-        header.add_widget(Label(text="SETTINGS", font_size=dp(20), bold=True, halign='left'))
-        layout.add_widget(header)
+        header.add_widget(Label(text="APP SETTINGS", font_size=dp(20), bold=True, halign='left'))
+        self.layout.add_widget(header)
 
-        layout.add_widget(Label(text="List Font Size:", size_hint_y=None, height=dp(30)))
+        # --- FONT SIZE SECTION ---
+        self.layout.add_widget(Label(text="Display Text Size:", size_hint_y=None, height=dp(30), color=(0.7, 0.7, 0.7, 1)))
         self.font_spinner = Spinner(
-            text=App.get_running_app().font_scale,
+            text="Large", 
             values=("Smallest", "Small", "Medium", "Large"),
             size_hint_y=None, height=dp(50),
-            background_color=(0.3, 0.3, 0.3, 1), bold=True
+            background_color=(0.3, 0.3, 0.3, 1)
         )
         self.font_spinner.bind(text=lambda s, t: App.get_running_app().change_font_size(t))
-        layout.add_widget(self.font_spinner)
+        self.layout.add_widget(self.font_spinner)
 
-        # Existing utility buttons
-        m_btn = Button(text="RESTORE MASTER LIST", size_hint_y=None, height=dp(65), background_color=(0.2, 0.5, 0.8, 1), bold=True)
-        m_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Reset to Master Template?", App.get_running_app().restore_from_master_file))
-        layout.add_widget(m_btn)
+        # --- CLOUD / FAMILY ID SECTION ---
+        self.layout.add_widget(Label(text="Family Sync ID:", size_hint_y=None, height=dp(30), color=(0.7, 0.7, 0.7, 1)))
+        self.id_input = TextInput(
+            multiline=False, size_hint_y=None, height=dp(50),
+            hint_text="Enter Family Name...", padding=[dp(10), dp(12)]
+        )
+        self.layout.add_widget(self.id_input)
 
-        ex_btn = Button(text="EXPORT DATA", size_hint_y=None, height=dp(65), background_color=(0.3, 0.7, 0.3, 1), bold=True)
-        ex_btn.bind(on_release=lambda x: App.get_running_app().export_data())
-        layout.add_widget(ex_btn)
+        # Update Button
+        save_id_btn = Button(
+            text="UPDATE & SYNC ID", size_hint_y=None, height=dp(55),
+            background_color=(0.2, 0.6, 1, 1), bold=True
+        )
+        save_id_btn.bind(on_release=self.apply_id_change)
+        self.layout.add_widget(save_id_btn)
 
-        im_btn = Button(text="IMPORT DATA", size_hint_y=None, height=dp(65), background_color=(0.7, 0.5, 0.2, 1), bold=True)
-        im_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Overwrite with Imported Data?", App.get_running_app().import_data))
-        layout.add_widget(im_btn)
+        # --- ADVANCED CLOUD OVERRIDES ---
+        self.layout.add_widget(Widget(size_hint_y=None, height=dp(20))) # Spacer
+        self.layout.add_widget(Label(text="Manual Cloud Overrides:", size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1)))
         
-        layout.add_widget(Widget()) # Pushes everything to the top
-        self.add_widget(layout)
+        # Force Push (Upload)
+        push_btn = Button(text="FORCE UPLOAD TO CLOUD", size_hint_y=None, height=dp(50), background_color=(0.2, 0.7, 0.3, 1))
+        # Use a lambda that fetches the app at the MOMENT of the click
+        push_btn.bind(on_release=lambda x: App.get_running_app().confirm_action(
+            "Overwrite Cloud with Phone data?", 
+            App.get_running_app().save_data
+        ))
+        self.layout.add_widget(push_btn)
+
+        # Force Pull (Download)
+        pull_btn = Button(text="FORCE DOWNLOAD FROM CLOUD", size_hint_y=None, height=dp(50), background_color=(0.7, 0.5, 0.2, 1))
+        # Use a lambda that fetches the app at the MOMENT of the click
+        pull_btn.bind(on_release=lambda x: App.get_running_app().confirm_action(
+            "Wipe Phone and pull from Cloud?", 
+            App.get_running_app().sync_now
+        ))
+        self.layout.add_widget(pull_btn)
+
+        self.layout.add_widget(Widget()) # Push everything to top
+        self.add_widget(self.layout)
 
     def on_pre_enter(self):
-        self.font_spinner.text = App.get_running_app().font_scale
+        # Refresh values when we open the screen
+        app = App.get_running_app()
+        self.font_spinner.text = app.font_scale
+        self.id_input.text = app.family_id
+
+    def apply_id_change(self, instance):
+        new_id = self.id_input.text.strip()
+        if new_id:
+            App.get_running_app().update_family_id(new_id)
+        else:
+            App.get_running_app().notify("Please enter a valid Family ID.")
 
     def _update_header_rect(self, instance, value):
         self.rect.pos = instance.pos
@@ -256,6 +296,9 @@ class SettingsScreen(Screen):
 
 # --- MAIN APP ---
 class ShoppingApp(App):
+    # Your Firebase URL
+    BASE_URL = "https://shoppinglist-eae1c-default-rtdb.europe-west1.firebasedatabase.app/"
+
     def build(self):
         self.data_file = os.path.join(self.user_data_dir, "shopping_data.json")
         self.backup_file = os.path.join(self.user_data_dir, "shopping_backup.json")
@@ -277,15 +320,51 @@ class ShoppingApp(App):
         header_row.add_widget(self.list_spinner)
 
         btn_group = BoxLayout(size_hint_x=0.65, spacing=dp(4))
+
         def image_btn(img, callback, tint=(1, 1, 1, 1)):
-            return Button(background_normal=img, on_press=callback, background_color=tint, 
+            return Button(background_normal=img, on_release=callback, background_color=tint, 
                           size_hint=(None, None), size=(dp(38), dp(38)), pos_hint={'center_y': 0.5})
 
         btn_group.add_widget(image_btn('new.png', self.create_new_list, tint=(0.2, 1, 0.2, 1))) 
         btn_group.add_widget(image_btn('edit.png', self.rename_list_popup, tint=(1, 1, 0.2, 1))) 
         btn_group.add_widget(image_btn('delete.png', self.confirm_delete_list, tint=(1, 0.3, 0.3, 1))) 
-        btn_group.add_widget(image_btn('cats.png', lambda x: setattr(self.sm, 'current', 'categories'))) 
+        btn_group.add_widget(image_btn('cats.png', lambda x: setattr(self.sm, 'current', 'categories')))         
         btn_group.add_widget(image_btn('settings.png', lambda x: setattr(self.sm, 'current', 'settings')))
+        
+# 1. Create a container for the icon
+        sync_container = RelativeLayout(size_hint=(None, None), size=(dp(50), dp(50)), pos_hint={'center_y': 0.5})
+
+        # 2. Create the Visual Icon (Labels never show the 'X' cross)
+        self.sync_icon = Label(
+            text="↻", 
+            font_size=dp(35), 
+            color=(0.4, 0.8, 1, 1), 
+            bold=True,
+            pos=(0, 0)
+        )
+
+        # 3. Add the Rotation instructions to the Label
+        with self.sync_icon.canvas.before:
+            PushMatrix()
+            self.rot = Rotate(angle=0, origin=sync_container.center)
+        with self.sync_icon.canvas.after:
+            PopMatrix()
+
+        # 4. Create an Invisible Button on top to catch clicks
+        self.sync_btn = Button(
+            background_color=(0,0,0,0), 
+            size_hint=(1, 1)
+        )
+        self.sync_btn.bind(on_release=self.sync_now)
+
+        # 5. Assemble and Add to Header
+        sync_container.add_widget(self.sync_icon)
+        sync_container.add_widget(self.sync_btn)
+        
+        # This replaces the old self.sync_btn in your header_row
+        btn_group.add_widget(sync_container)
+
+
         header_row.add_widget(btn_group); main_layout.add_widget(header_row)
 
         # INPUT
@@ -314,6 +393,16 @@ class ShoppingApp(App):
         self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
         scroll = ScrollView(); scroll.add_widget(self.list_layout)
         main_layout.add_widget(scroll)
+
+        # 1. ADD THE TIMESTAMP LABEL HERE
+        self.sync_label = Label(
+            text="Last Synced: Never", 
+            size_hint_y=None, 
+            height=dp(20), 
+            font_size=dp(12), 
+            color=(0.6, 0.6, 0.6, 1) # Soft gray
+        )
+        main_layout.add_widget(self.sync_label)
 
         bot = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
         
@@ -348,24 +437,35 @@ class ShoppingApp(App):
 
     # --- DATA ---
     def load_data(self):
-        # Default values
-        self.categories = {'Uncategorized':{'order':99,'keywords':[]}}
-        self.all_lists = {'Groceries':[]}
+        # 1. Set hard defaults
+        self.font_scale = 'Large'
+        self.family_id = "DefaultFamily"
+        self.categories = {'Uncategorized': {'order': 99, 'keywords': []}}
+        self.all_lists = {'Groceries': []}
         self.active_list_name = 'Groceries'
-        self.font_scale = 'Large' 
 
-        if os.path.exists(self.data_file):
+        # 2. Load Local Settings (Font and ID)
+        local_path = os.path.join(self.user_data_dir, "local_settings.json")
+        if os.path.exists(local_path):
             try:
-                with open(self.data_file, 'r') as f:
-                    d = json.load(f)
-                    self.categories = d.get('categories', self.categories)
-                    self.all_lists = d.get('all_lists', self.all_lists)
-                    self.active_list_name = d.get('active_list_name', self.active_list_name)
-                    self.font_scale = d.get('font_scale', 'Large')
-            except Exception as e:
-                print(f"Error loading: {e}")
+                with open(local_path, 'r') as f:
+                    local_d = json.load(f)
+                    self.font_scale = local_d.get('font_scale', 'Large')
+                    self.family_id = local_d.get('family_id', 'DefaultFamily')
+            except: pass
         
         self.update_font_metrics()
+
+        # 3. Load Shared List from Cloud (using the ID we just loaded)
+        try:
+            response = requests.get(self.cloud_url, timeout=5)
+            if response.status_code == 200 and response.json():
+                cloud_d = response.json()
+                self.categories = cloud_d.get('categories', self.categories)
+                self.all_lists = cloud_d.get('all_lists', self.all_lists)
+                self.active_list_name = cloud_d.get('active_list_name', 'Groceries')
+        except:
+            print("Offline: Using internal defaults")
 
     def update_font_metrics(self):
         if self.font_scale == "Smallest":
@@ -381,8 +481,13 @@ class ShoppingApp(App):
         if size != self.font_scale:
             self.font_scale = size
             self.update_font_metrics()
-            self.item_input.font_size = self.f_size # Fixes immediate feedback
-            self.save_data()
+            self.item_input.font_size = self.f_size
+            
+            # Save only local settings here to avoid unnecessary cloud traffic
+            local_settings = {'font_scale': self.font_scale}
+            with open(os.path.join(self.user_data_dir, "local_settings.json"), 'w') as f:
+                json.dump(local_settings, f)
+            
             self.refresh_ui()
 
     def clear_entire_list(self, *args):
@@ -390,14 +495,30 @@ class ShoppingApp(App):
         self.save_data()
         self.refresh_ui()
 
-    def save_data(self):
-        with open(self.data_file, 'w') as f:
-            json.dump({
-                'categories': self.categories, 
-                'all_lists': self.all_lists, 
-                'active_list_name': self.active_list_name,
-                'font_scale': self.font_scale
-            }, f, indent=4)
+    @property
+    def cloud_url(self):
+        # This dynamically builds the URL based on your Family ID
+        return f"{self.BASE_URL}{self.family_id}.json"
+
+    def save_data(self, instance=None):
+        payload = {
+            'categories': self.categories, 
+            'all_lists': self.all_lists, 
+            'active_list_name': self.active_list_name
+        }
+        try: 
+            res = requests.put(self.cloud_url, json=payload, timeout=5)
+            if res.status_code == 200:
+                # Only notify if manually triggered from Settings
+                if instance:
+                    self.notify("Cloud Upload Successful!")
+        except: 
+            self.notify("Upload Failed: No Connection")
+        
+        # Always save local settings quietly
+        local = {'font_scale': self.font_scale, 'family_id': self.family_id}
+        with open(os.path.join(self.user_data_dir, "local_settings.json"), 'w') as f: 
+            json.dump(local, f)
 
     def restore_from_master_file(self):
         try:
@@ -517,12 +638,21 @@ class ShoppingApp(App):
         self.save_data()
         self.refresh_ui()
     def switch_list(self, spinner, text): self.active_list_name = text; self.save_data(); self.refresh_ui()
+
     def confirm_action(self, msg, callback):
-        content = BoxLayout(orientation='vertical', padding=dp(10)); content.add_widget(Label(text=msg))
+        content = BoxLayout(orientation='vertical', padding=dp(10))
+        content.add_widget(Label(text=msg))
         btns = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        
+        # We wrap the callback to ensure the popup closes
         y = Button(text="YES", on_release=lambda x: (callback(), p.dismiss()))
-        n = Button(text="NO", on_release=lambda x: p.dismiss()); btns.add_widget(n); btns.add_widget(y)
-        content.add_widget(btns); p = Popup(title="Confirm", content=content, size_hint=(0.8, 0.3)); p.open()
+        n = Button(text="NO", on_release=lambda x: p.dismiss())
+        
+        btns.add_widget(n); btns.add_widget(y)
+        content.add_widget(btns)
+        p = Popup(title="Confirm", content=content, size_hint=(0.8, 0.3))
+        p.open()
+
     def notify(self, text): Popup(title="Notice", content=Label(text=text), size_hint=(0.7, 0.2)).open()
 
     def on_type_prediction(self, instance, value):
@@ -561,6 +691,53 @@ class ShoppingApp(App):
         self.item_input.text = text
         self.prediction_drop.dismiss()
         self.process_addition(None)
+
+    def update_family_id(self, new_id):
+        self.family_id = new_id  # Update the variable
+        self.save_data()         # Write to local_settings.json
+        self.sync_now()          # Pull the new list immediately
+        self.refresh_ui()
+        self.notify(f"Synced to ID: {self.family_id}")
+
+    def sync_now(self, instance=None):
+        # 1. Corrected Animation Logic
+        if hasattr(self, 'sync_btn'):
+            # We animate the angle from 0 to 360
+            anim = Animation(angle=360, duration=0.6, t='in_out_quad')
+            
+            # This function updates our 'self.rot' object directly
+            def upd(a, w, ang): 
+                self.rot.angle = ang
+                
+            anim.bind(on_progress=upd)
+            
+            # Reset to 0 before starting so it can spin again on next click
+            self.rot.angle = 0
+            anim.start(self.rot) # <--- FIX: Animate 'self.rot', not 'self.sync_btn'
+
+        try:
+            # Add a timeout so the app doesn't hang if the internet is slow
+            res = requests.get(self.cloud_url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                if data:
+                    self.all_lists = data.get('all_lists', self.all_lists)
+                    self.active_list_name = data.get('active_list_name', self.active_list_name)
+                    self.refresh_ui()
+                    self.sync_label.text = f"Synced: {datetime.now().strftime('%H:%M:%S')}"
+                    
+                    # Success popup logic (Silent for refresh button)
+                    if instance and instance != self.sync_btn:
+                        self.notify("Cloud Download Successful!")
+            else:
+                self.notify(f"Sync ID not found (404). Try 'Force Upload'.")
+        except:
+            self.notify("Download Failed: No Connection")
+
+    def _update_rot_origin(self, instance, value):
+        if hasattr(self, 'rot'):
+            # Use the center of the container/icon area
+            self.rot.origin = instance.center
 
 if __name__ == '__main__':
     ShoppingApp().run()
