@@ -373,16 +373,36 @@ class ShoppingApp(App):
         scroll = ScrollView(); scroll.add_widget(self.list_layout)
         main_layout.add_widget(scroll)
 
-        # 1. ADD THE TIMESTAMP LABEL HERE
-        self.sync_label = Label(
-            text="Last Synced: Never", 
-            size_hint_y=None, 
-            height=dp(20), 
-            font_size=dp(14), 
-            color=(0.6, 0.6, 0.6, 1) # Soft gray
-        )
-        main_layout.add_widget(self.sync_label)
+        # --- STATUS BAR (Above Footer Buttons) ---
+        status_bar = BoxLayout(size_hint_y=None, height=dp(30), padding=[dp(10), 0])
 
+        # Left side: Item Count
+        self.stats_label = Label(
+            text="0 items",
+            size_hint_x=0.5,
+            halign='left',
+            valign='middle',
+            color=(0.8, 0.8, 0.8, 1),
+            font_size='14sp'
+        )
+        self.stats_label.bind(size=self.stats_label.setter('text_size')) # Ensures alignment works
+
+        # Right side: Last Sync
+        self.sync_label = Label(
+            text="Last Synced: Never",
+            size_hint_x=0.5,
+            halign='right',
+            valign='middle',
+            color=(0.6, 0.6, 0.6, 1),
+            font_size='14sp'
+        )
+        self.sync_label.bind(size=self.sync_label.setter('text_size'))
+
+        status_bar.add_widget(self.stats_label)
+        status_bar.add_widget(self.sync_label)
+        
+        main_layout.add_widget(status_bar)        
+        
         bot = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
         
         self.done_btn = Button(text="SHOW DONE", on_press=self.toggle_completed, bold=True)
@@ -402,16 +422,18 @@ class ShoppingApp(App):
             bold=True,
             on_press=lambda x: self.confirm_action("Wipe ENTIRE list?", self.clear_entire_list)
         )
-                
+
         bot.add_widget(self.done_btn)
-        bot.add_widget(clear_btn)
         bot.add_widget(del_done_btn)
+        bot.add_widget(clear_btn)
         main_layout.add_widget(bot)
 
         self.main_page.add_widget(main_layout); self.sm.add_widget(self.main_page)
         self.sm.add_widget(CategoryScreen(name='categories'))
         self.sm.add_widget(SettingsScreen(name='settings'))
-        
+
+        self.sync_now()
+
         self.refresh_ui(); return self.sm
 
     # --- DATA ---
@@ -504,7 +526,7 @@ class ShoppingApp(App):
             )
             
             if res.status_code == 200:
-                self.sync_label.text = f"Cloud Updated: {datetime.now().strftime('%H:%M:%S')}"
+                self.sync_label.text = f"Last Sync: {datetime.now().strftime('%H:%M:%S')}"
                 # Only show the popup if we manually clicked a "Save" or "Force" button
                 if instance and hasattr(instance, 'text') and "Force" in instance.text:
                     self.notify("Cloud Upload Successful!")
@@ -592,6 +614,8 @@ class ShoppingApp(App):
                 background_color=(done_bg if i['done'] else active_bg)
             )
             self.list_layout.add_widget(row)
+
+        self.update_stats()
 
     def create_new_list(self, instance):
         # 1. Generate the name (List 1, List 2, etc.)
@@ -816,7 +840,7 @@ class ShoppingApp(App):
                     self.active_list_name = data.get('active_list_name', self.active_list_name)
                     
                     self.refresh_ui()
-                    self.sync_label.text = f"Synced: {datetime.now().strftime('%H:%M:%S')}"
+                    self.sync_label.text = f"Last Synced: {datetime.now().strftime('%H:%M:%S')}"
                     Clock.schedule_once(reset_button_color, 1)
             else:
                 self.sync_label.text = "Sync Error"
@@ -827,6 +851,24 @@ class ShoppingApp(App):
             self.sync_label.text = "Offline"
             self.sync_btn.background_color = (1, 0.3, 0.3, 1)
             Clock.schedule_once(reset_button_color, 1)
+
+    def update_stats(self):
+        current_list = self.all_lists.get(self.active_list_name, [])
+        
+        # IMPROVED FILTER: Handle if the list is just [None] or contains 
+        # the placeholder string/dict consistently.
+        real_items = [
+            i for i in current_list 
+            if isinstance(i, dict) and i.get('name') != "PLACEHOLDER"
+        ]
+        
+        total = len(real_items)
+        remaining = len([i for i in real_items if not i.get('done')])
+        
+        if total == 0:
+            self.stats_label.text = "List is empty"
+        else:
+            self.stats_label.text = f"{remaining}/{total} left to find"
 
 
 if __name__ == '__main__':
