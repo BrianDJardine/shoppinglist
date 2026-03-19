@@ -432,8 +432,6 @@ class ShoppingApp(App):
         self.sm.add_widget(CategoryScreen(name='categories'))
         self.sm.add_widget(SettingsScreen(name='settings'))
 
-        self.sync_now()
-
         self.refresh_ui(); return self.sm
 
     # --- DATA ---
@@ -870,6 +868,14 @@ class ShoppingApp(App):
         else:
             self.stats_label.text = f"{remaining}/{total} left to find"
 
+    def on_start(self):
+        # This is a special Kivy function that runs 
+        # automatically AFTER build is finished.
+        Clock.schedule_once(self.auto_sync, 0.5)
+
+    def auto_sync(self, dt):
+        # This calls your existing sync code
+        self.sync_now()
 
 if __name__ == '__main__':
     ShoppingApp().run()
