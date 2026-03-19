@@ -87,44 +87,53 @@ class ListItem(BoxLayout):
 class CategoryScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        # 1. We use self.container so we can access it if needed
+        self.container = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
 
-        # --- ENHANCED HEADER ROW ---
+        # --- HEADER ---
         header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10), padding=[dp(10), 0])
         with header.canvas.before:
-            Color(0.15, 0.15, 0.15, 1)  # Dark charcoal header background
+            Color(0.15, 0.15, 0.15, 1)
             self.rect = Rectangle(size=header.size, pos=header.pos)
         header.bind(size=self._update_header_rect, pos=self._update_header_rect)
 
-        back_btn = Button(
-            background_normal='back.png', 
-            size_hint=(None, None), 
-            size=(dp(35), dp(35)), 
-            pos_hint={'center_y': 0.5},
-            background_color=(1, 1, 1, 1) # Ensure it stays white
-        )
+        back_btn = Button(background_normal='back.png', size_hint=(None, None), size=(dp(35), dp(35)), pos_hint={'center_y': 0.5})
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
-        
         header.add_widget(back_btn)
-        header.add_widget(Label(text="CATEGORIES", font_size=dp(20), bold=True, halign='left'))
-        self.layout.add_widget(header)
-        # ----------------------
+        header.add_widget(Label(text="CATEGORIES", font_size=dp(20), bold=True))
+        self.container.add_widget(header)
 
+        # --- ADD BOX ---
         add_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         self.new_cat_input = TextInput(hint_text="New Category Name...", multiline=False)
         add_btn = Button(text="ADD", size_hint_x=0.3, background_color=(0.2, 0.7, 0.3, 1), bold=True)
         add_btn.bind(on_release=self.add_category)
-        add_box.add_widget(self.new_cat_input); add_box.add_widget(add_btn)
-        self.layout.add_widget(add_box)
+        add_box.add_widget(self.new_cat_input)
+        add_box.add_widget(add_btn)
+        self.container.add_widget(add_box)
 
+        # --- THE SCROLL VIEW (The Fix) ---
+        # Added scroll_type and bar_width to make it work better on PC
+        self.scroll = ScrollView(
+            size_hint=(1, 1), 
+            do_scroll_x=False, 
+            do_scroll_y=True,
+            scroll_type=['bars', 'content'],
+            bar_width=dp(10)
+        )
+        
         self.cat_list_layout = GridLayout(cols=1, size_hint_y=None, spacing=dp(5))
         self.cat_list_layout.bind(minimum_height=self.cat_list_layout.setter('height'))
-        scroll = ScrollView(); scroll.add_widget(self.cat_list_layout)
-        self.layout.add_widget(scroll)
 
-        self.add_widget(self.layout)
+        self.scroll.add_widget(self.cat_list_layout)
+        self.container.add_widget(self.scroll)
         
-    def on_pre_enter(self): self.refresh_categories()
+        # Ensure the screen is clear before adding the main container
+        self.clear_widgets() 
+        self.add_widget(self.container)
+        
+    def on_pre_enter(self): 
+        self.refresh_categories()
 
     def _update_header_rect(self, instance, value):
         self.rect.pos = instance.pos
@@ -133,27 +142,45 @@ class CategoryScreen(Screen):
     def refresh_categories(self):
         self.cat_list_layout.clear_widgets()
         app = App.get_running_app()
+        # Ensure we don't crash if categories is somehow empty
+        if not app.categories:
+            return
+
         sorted_cats = sorted(app.categories.items(), key=lambda x: x[1].get('order', 99))
+        
         for name, data in sorted_cats:
+            # Each row MUST have size_hint_y=None for the grid to calculate height
             row = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
             
-            # Ordering buttons
+            # Order buttons
             order_box = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(45))
-            up = Button(text="^"); up.bind(on_release=lambda x, n=name: self.move_cat(n, -1))
-            dn = Button(text="v"); dn.bind(on_release=lambda x, n=name: self.move_cat(n, 1))
-            order_box.add_widget(up); order_box.add_widget(dn)
+            up = Button(text="^")
+            up.bind(on_release=lambda x, n=name: self.move_cat(n, -1))
+            dn = Button(text="v")
+            dn.bind(on_release=lambda x, n=name: self.move_cat(n, 1))
+            order_box.add_widget(up)
+            order_box.add_widget(dn)
             
-            # Label as button for Renaming (CAPS and 21sp)
-            lbl = Button(text=name.upper(), halign='left', valign='middle', 
-                         font_size=dp(21), bold=True, background_color=(0,0,0,0))
+            # Category Label/Button
+            lbl = Button(
+                text=name.upper(), 
+                font_size=dp(21), 
+                bold=True, 
+                background_color=(0.2, 0.2, 0.2, 1),
+                halign='left',
+                valign='middle'
+            )
             lbl.bind(size=lbl.setter('text_size'))
             lbl.bind(on_release=lambda x, n=name: self.rename_category_popup(n))
             
-            del_btn = Button(text="X", size_hint_x=None, width=dp(55), background_color=(0.8, 0.2, 0.2, 1), bold=True)
-            del_btn.bind(on_release=lambda x, n=name: self.delete_category(n))
+            row.add_widget(order_box)
+            row.add_widget(lbl)
             
-            row.add_widget(order_box); row.add_widget(lbl)
-            if name != "Uncategorized": row.add_widget(del_btn)
+            if name != "Uncategorized":
+                del_btn = Button(text="X", size_hint_x=None, width=dp(55), background_color=(0.8, 0.2, 0.2, 1))
+                del_btn.bind(on_release=lambda x, n=name: self.delete_category(n))
+                row.add_widget(del_btn)
+            
             self.cat_list_layout.add_widget(row)
 
     def rename_category_popup(self, old_name):
@@ -557,18 +584,6 @@ class ShoppingApp(App):
         with open(local_path, 'w') as f:
             json.dump(local, f)
 
-    def restore_from_master_file(self):
-        try:
-            if os.path.exists(self.master_template_file):
-                with open(self.master_template_file, 'r') as f: data = json.load(f)
-                self.categories = data.get('categories', {})
-                self.all_lists = data.get('all_lists', {'Groceries': []})
-                self.active_list_name = data.get('active_list_name', 'Groceries')
-                self.save_data(); self.list_spinner.values = list(self.all_lists.keys())
-                self.list_spinner.text = self.active_list_name; self.refresh_ui(); self.notify("Master List Restored!")
-            else: self.notify("master_data.json not found.")
-        except Exception as e: self.notify(f"Restore Failed: {e}")
-
     # --- UI & LISTS ---
     def refresh_ui(self, *args):
         self.list_spinner.text = self.active_list_name
@@ -696,14 +711,50 @@ class ShoppingApp(App):
             # We don't clear the text yet so the user can see what they're categorizing
 
     def show_category_popup(self, name):
-        content = GridLayout(cols=2, spacing=dp(10), padding=dp(10))
-        popup = Popup(title=f"Category for '{name}'", content=content, size_hint=(0.9, 0.6))
+        # 1. Main container for the popup
+        # We need a fixed height container so the ScrollView knows its boundaries
+        outer_layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        
+        outer_layout.add_widget(Label(
+            text=f"Assign category for: {name.upper()}", 
+            size_hint_y=None, height=dp(40), bold=True
+        ))
 
-        for cat in self.categories.keys():
-            btn = Button(text=cat, height=dp(50), size_hint_y=None)
-            # When clicked, add the item and the new keyword
+        # 2. The ScrollView - This MUST have a size_hint (usually 1, 1)
+        scroll_view = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+
+        # 3. The GridLayout - THIS IS THE FIX
+        # size_hint_y=None is MANDATORY. 
+        # Without it, the grid won't grow, and ScrollView won't scroll.
+        cat_grid = GridLayout(cols=2, spacing=dp(10), size_hint_y=None)
+        
+        # 4. THE MAGIC LINK
+        # This tells the grid: "Every time a button is added, update your total height"
+        cat_grid.bind(minimum_height=cat_grid.setter('height'))
+
+        # 5. Create the Popup early so buttons can reference it
+        popup = Popup(title="Select Category", content=outer_layout, size_hint=(0.9, 0.8))
+
+        # 6. Add the buttons
+        for cat in sorted(self.categories.keys()):
+            btn = Button(
+                text=cat.upper(), 
+                size_hint_y=None, 
+                height=dp(60), # Every button MUST have a fixed height
+                background_color=(0.2, 0.6, 1, 1),
+                bold=True
+            )
             btn.bind(on_release=lambda b, c=cat: self.finalize_addition(name, c, popup))
-            content.add_widget(btn)
+            cat_grid.add_widget(btn)
+
+        # 7. Assemble the sandwich correctly
+        scroll_view.add_widget(cat_grid)
+        outer_layout.add_widget(scroll_view)
+        
+        # 8. Add a close/cancel button so it's not a trap
+        cancel_btn = Button(text="CANCEL", size_hint_y=None, height=dp(50), background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn.bind(on_release=popup.dismiss)
+        outer_layout.add_widget(cancel_btn)
 
         popup.open()
 
