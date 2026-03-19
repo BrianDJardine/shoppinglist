@@ -2,9 +2,50 @@ from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Line, InstructionGroup
 from kivy.clock import Clock
+from kivy.uix.relativelayout import RelativeLayout
+from kivy.graphics import Color, Line, Triangle
+from kivy.metrics import dp
 from PIL import Image, ImageDraw
 import os
+from kivy.core.window import Window
+from kivy.uix.relativelayout import RelativeLayout
+from kivy.graphics import Color, Line, Triangle
+from kivy.metrics import dp
 
+class SyncIcon(RelativeLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Increase internal resolution (128x128 is a good target for phones)
+        self.size_hint = (None, None)
+        self.size = (128, 128)
+        
+        center = 64
+        radius = 40
+        line_width = 6 # Thicker line looks better on high-res screens
+        
+        with self.canvas:
+            Color(1, 1, 1, 1) # Pure White
+            
+            # Top-Right Arc (Start at 0 degrees, go to 150)
+            Line(circle=(center, center, radius, 0, 150), width=line_width, cap='round')
+            
+            # Bottom-Left Arc (Start at 180 degrees, go to 330)
+            Line(circle=(center, center, radius, 180, 330), width=line_width, cap='round')
+            
+            # Top Arrowhead (Placed at the end of the first arc)
+            Triangle(points=[
+                center + radius, center - 2,           # Tip
+                center + radius - 15, center + 15,     # Left back
+                center + radius + 15, center + 15      # Right back
+            ])
+            
+            # Bottom Arrowhead (Placed at the end of the second arc)
+            Triangle(points=[
+                center - radius, center + 2,           # Tip
+                center - radius + 15, center - 15,     # Left back
+                center - radius - 15, center - 15      # Right back
+            ])
+            
 class IconGenerator(App):
     def build(self):
         # We run the generation after one frame to ensure the canvas is ready
@@ -105,6 +146,11 @@ class IconGenerator(App):
         w = Widget(size=(128, 128))
         w.canvas.add(settings_ig)
         w.export_to_png('settings.png')
+
+        # Sync icon
+        sync_icon = SyncIcon()
+        # Use the same export logic you use for 'settings.png' or 'home.png'
+        sync_icon.export_to_png("sync.png")
 
         print("\nSUCCESS: All icons created. You can close the window now.")
         self.stop() # Automatically closes the app once done

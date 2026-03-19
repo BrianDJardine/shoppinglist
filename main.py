@@ -313,7 +313,7 @@ class ShoppingApp(App):
         self.main_page = Screen(name='main')
         main_layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(8))
         
-        # HEADER
+        # --- HEADER ---
         header_row = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         self.list_spinner = Spinner(text=self.active_list_name, values=list(self.all_lists.keys()),
                                     size_hint_x=0.35, background_color=(0.15, 0.15, 0.15, 1), bold=True)
@@ -332,41 +332,19 @@ class ShoppingApp(App):
         btn_group.add_widget(image_btn('cats.png', lambda x: setattr(self.sm, 'current', 'categories')))         
         btn_group.add_widget(image_btn('settings.png', lambda x: setattr(self.sm, 'current', 'settings')))
         
-# 1. Create a container for the icon
-        sync_container = RelativeLayout(size_hint=(None, None), size=(dp(50), dp(50)), pos_hint={'center_y': 0.5})
-
-        # 2. Create the Visual Icon (Labels never show the 'X' cross)
-        self.sync_icon = Label(
-            text="↻", 
-            font_size=dp(35), 
-            color=(0.4, 0.8, 1, 1), 
-            bold=True,
-            pos=(0, 0)
-        )
-
-        # 3. Add the Rotation instructions to the Label
-        with self.sync_icon.canvas.before:
-            PushMatrix()
-            self.rot = Rotate(angle=0, origin=sync_container.center)
-        with self.sync_icon.canvas.after:
-            PopMatrix()
-
-        # 4. Create an Invisible Button on top to catch clicks
+        # --- NEW SIMPLE SYNC BUTTON ---
         self.sync_btn = Button(
-            background_color=(0,0,0,0), 
-            size_hint=(1, 1)
+            background_normal='sync.png', 
+            background_down='sync.png',
+            size_hint=(None, None), 
+            size=(dp(38), dp(38)), 
+            pos_hint={'center_y': 0.5}
         )
         self.sync_btn.bind(on_release=self.sync_now)
+        btn_group.add_widget(self.sync_btn)
 
-        # 5. Assemble and Add to Header
-        sync_container.add_widget(self.sync_icon)
-        sync_container.add_widget(self.sync_btn)
-        
-        # This replaces the old self.sync_btn in your header_row
-        btn_group.add_widget(sync_container)
-
-
-        header_row.add_widget(btn_group); main_layout.add_widget(header_row)
+        header_row.add_widget(btn_group)
+        main_layout.add_widget(header_row)
 
         # INPUT
         input_box = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
@@ -491,7 +469,7 @@ class ShoppingApp(App):
             
             self.refresh_ui()
 
-    def clear_entire_list(self, *args):
+    def clear_entire_list(self, instance=None):
         self.all_lists[self.active_list_name] = [{
             'name': 'PLACEHOLDER', 
             'done': False, 
@@ -752,13 +730,10 @@ class ShoppingApp(App):
 
     def toggle_completed(self, instance): self.show_completed = not self.show_completed; self.done_btn.text = "HIDE DONE" if self.show_completed else "SHOW DONE"; self.refresh_ui()
     
-    def clear_completed(self, instance):
-        current_list = self.all_lists[self.active_list_name]
+    def clear_completed(self, instance=None): # Added =None to make it optional
+        current_list = self.all_lists.get(self.active_list_name, [])
         
-        # Keep items if: 
-        # 1. They are NOT done 
-        # OR 
-        # 2. Their name is "PLACEHOLDER"
+        # We keep items that are NOT done OR are the PLACEHOLDER
         self.all_lists[self.active_list_name] = [
             i for i in current_list 
             if not i.get('done') or i.get('name') == "PLACEHOLDER"
@@ -830,49 +805,40 @@ class ShoppingApp(App):
         self.notify(f"Synced to ID: {self.family_id}")
 
     def sync_now(self, instance=None):
-        # 1. Corrected Animation Logic
-        if hasattr(self, 'sync_btn'):
-            # We animate the angle from 0 to 360
-            anim = Animation(angle=360, duration=0.6, t='in_out_quad')
-            
-            # This function updates our 'self.rot' object directly
-            def upd(a, w, ang): 
-                self.rot.angle = ang
-                
-            anim.bind(on_progress=upd)
-            
-            # Reset to 0 before starting so it can spin again on next click
-            self.rot.angle = 0
-            anim.start(self.rot) # <--- FIX: Animate 'self.rot', not 'self.sync_btn'
+        self.sync_btn.background_color = (0.2, 1, 0.2, 1) 
+        self.sync_label.text = "Syncing..."
+
+        def reset_button_color(dt):
+            self.sync_btn.background_color = (1, 1, 1, 1)
 
         try:
-            # Add a timeout so the app doesn't hang if the internet is slow
-            res = requests.get(
-                self.cloud_url, 
-                timeout=10, 
-                verify=certifi.where() # This tells the phone "Use these trusted IDs"
-            )
+            res = requests.get(self.cloud_url, timeout=10, verify=certifi.where())
 
             if res.status_code == 200:
                 data = res.json()
                 if data:
+                    # DYNAMIC CHECK: Look for whatever ID is currently in use
+                    # If the data is nested under the family_id (like CapybaraClan)
+                    if self.family_id in data:
+                        data = data[self.family_id]
+                    
                     self.all_lists = data.get('all_lists', self.all_lists)
+                    self.categories = data.get('categories', self.categories)
                     self.active_list_name = data.get('active_list_name', self.active_list_name)
+                    
                     self.refresh_ui()
                     self.sync_label.text = f"Synced: {datetime.now().strftime('%H:%M:%S')}"
-                    
-                    # Success popup logic (Silent for refresh button)
-                    if instance and instance != self.sync_btn:
-                        self.notify("Cloud Download Successful!")
+                    Clock.schedule_once(reset_button_color, 1)
             else:
-                self.notify(f"Sync ID not found (404). Try 'Force Upload'.")
-        except:
-            self.notify("Download Failed: No Connection")
+                self.sync_label.text = "Sync Error"
+                self.sync_btn.background_color = (1, 0.3, 0.3, 1)
+                Clock.schedule_once(reset_button_color, 1)
 
-    def _update_rot_origin(self, instance, value):
-        if hasattr(self, 'rot'):
-            # Use the center of the container/icon area
-            self.rot.origin = instance.center
+        except Exception as e:
+            self.sync_label.text = "Offline"
+            self.sync_btn.background_color = (1, 0.3, 0.3, 1)
+            Clock.schedule_once(reset_button_color, 1)
+
 
 if __name__ == '__main__':
     ShoppingApp().run()
