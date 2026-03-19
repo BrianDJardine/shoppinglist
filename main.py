@@ -378,7 +378,7 @@ class ShoppingApp(App):
             text="Last Synced: Never", 
             size_hint_y=None, 
             height=dp(20), 
-            font_size=dp(12), 
+            font_size=dp(14), 
             color=(0.6, 0.6, 0.6, 1) # Soft gray
         )
         main_layout.add_widget(self.sync_label)
@@ -605,8 +605,6 @@ class ShoppingApp(App):
             'cat': 'Uncategorized',
             'count': 1
         }]
-        
-
 
         # 3. Update the UI components
         self.list_spinner.values = list(self.all_lists.keys())
@@ -620,11 +618,6 @@ class ShoppingApp(App):
         if not text: return
         
         current_list = self.all_lists[self.active_list_name]
-        
-         # Check if the list ONLY contains our placeholder dictionary
-        if len(current_list) == 1 and current_list[0].get('name') == "PLACEHOLDER":
-            current_list.clear()
-            
         current_list.append(text)
         self.save_data()
         self.refresh_ui()
@@ -713,10 +706,6 @@ class ShoppingApp(App):
         if found:
             found['count'] = found.get('count', 1) + 1
         else:
-            # If the list only contains our PLACEHOLDER dictionary, wipe it out before adding the first real item
-            if len(target) == 1 and isinstance(target[0], dict) and target[0].get('name') == "PLACEHOLDER":
-                target.clear()
-                
             target.append({'name': name.capitalize(), 'done': False, 'cat': cat, 'count': 1})
         
         self.save_data()
