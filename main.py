@@ -271,7 +271,7 @@ class SettingsScreen(Screen):
         # Use a lambda that fetches the app at the MOMENT of the click
         pull_btn.bind(on_release=lambda x: App.get_running_app().confirm_action(
             "Wipe Phone and pull from Cloud?", 
-            App.get_running_app().sync_now
+            App.get_running_app().force_download_confirmed # Use the specific pull function
         ))
         self.layout.add_widget(pull_btn)
 
@@ -301,9 +301,18 @@ class ShoppingApp(App):
     BASE_URL = "https://shoppinglist-eae1c-default-rtdb.europe-west1.firebasedatabase.app/"
 
     def build(self):
-        self.data_file = os.path.join(self.user_data_dir, "shopping_data.json")
-        self.backup_file = os.path.join(self.user_data_dir, "shopping_backup.json")
-        self.master_template_file = os.path.join(os.path.dirname(__file__), "master_data.json")
+        # We need to determine the family_id BEFORE setting self.data_file
+        # So we peek into local_settings.json first
+        temp_id = "DefaultFamily"
+        local_path = os.path.join(self.user_data_dir, "local_settings.json")
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, 'r') as f:
+                    temp_id = json.load(f).get('family_id', 'DefaultFamily')
+            except: pass
+        
+        self.family_id = temp_id
+        self.data_file = os.path.join(self.user_data_dir, f"shopping_data_{self.family_id}.json")
         
         self.show_completed = False
         self.load_data()
@@ -440,7 +449,7 @@ class ShoppingApp(App):
         self.font_scale = 'Large'
         self.family_id = "DefaultFamily"
         self.categories = {'Uncategorized': {'order': 99, 'keywords': []}}
-        self.all_lists = {'Groceries': []}
+        self.all_lists = {'Groceries': [{"name": "PLACEHOLDER", "done": False, "category": "Uncategorized"}]}
         self.active_list_name = 'Groceries'
 
         # 2. Load Local Settings (Font and ID)
@@ -455,16 +464,20 @@ class ShoppingApp(App):
         
         self.update_font_metrics()
 
-        # 3. Load Shared List from Cloud (using the ID we just loaded)
-        try:
-            response = requests.get(self.cloud_url, timeout=5)
-            if response.status_code == 200 and response.json():
-                cloud_d = response.json()
-                self.categories = cloud_d.get('categories', self.categories)
-                self.all_lists = cloud_d.get('all_lists', self.all_lists)
-                self.active_list_name = cloud_d.get('active_list_name', 'Groceries')
-        except:
-            print("Offline: Using internal defaults")
+        # 3. Try to load from the phone's local storage (The "Truth" for offline use)
+        if os.path.exists(self.data_file):
+            try:
+                with open(self.data_file, 'r') as f:
+                    local_data = json.load(f)
+                    # We use .get() to avoid crashing if a key is missing
+                    self.all_lists = local_data.get('all_lists', self.all_lists)
+                    self.categories = local_data.get('categories', self.categories)
+                    self.active_list_name = local_data.get('active_list_name', self.active_list_name)
+                print("Successfully loaded from local storage.")
+            except Exception as e:
+                print(f"Local storage load failed: {e}")
+
+        # 4. Cloud Sync will happen automatically 0.5s later via on_start()
 
     def update_font_metrics(self):
         if self.font_scale == "Smallest":
@@ -506,33 +519,37 @@ class ShoppingApp(App):
         return f"{self.BASE_URL}{self.family_id}.json"
 
     def save_data(self, instance=None):
-        # 1. Prepare the bundle for Firebase
-        payload = {
-            'categories': self.categories, 
-            'all_lists': self.all_lists, 
-            'active_list_name': self.active_list_name
-        }
-        
+        # 1. Always save locally first (The 'Safety Net')
         try:
-            # 2. USE PUT TO UPLOAD. 
-            # We use verify=certifi.where() so it works on your phone too.
-            res = requests.put(
-                self.cloud_url, 
-                json=payload, 
-                timeout=10, 
-                verify=certifi.where()
-            )
-            
-            if res.status_code == 200:
-                self.sync_label.text = f"Last Sync: {datetime.now().strftime('%H:%M:%S')}"
-                # Only show the popup if we manually clicked a "Save" or "Force" button
-                if instance and hasattr(instance, 'text') and "Force" in instance.text:
-                    self.notify("Cloud Upload Successful!")
-            else:
-                self.notify(f"Upload Error: {res.status_code}")
-                
+            with open(self.data_file, 'w') as f:
+                json.dump({
+                    'all_lists': self.all_lists,
+                    'categories': self.categories,
+                    'active_list_name': self.active_list_name
+                }, f, indent=4)
         except Exception as e:
-            self.notify(f"Upload Failed: {type(e).__name__}")
+            print(f"Local save failed: {e}")
+
+        # 2. Try to upload, but be quiet if it fails
+        try:
+            payload = {
+                self.family_id: {
+                    'all_lists': self.all_lists,
+                    'categories': self.categories,
+                    'active_list_name': self.active_list_name
+                }
+            }
+            # Reduced timeout for faster 'failing' when offline
+            requests.put(self.cloud_url, json=payload, timeout=3, verify=certifi.where())
+            
+            # If successful, update the label to show it's backed up
+            self.sync_label.text = f"Last Synced: {datetime.now().strftime('%H:%M')}"
+            self.sync_label.color = (0.6, 0.6, 0.6, 1)
+            
+        except Exception:
+            # Instead of a popup, we just change the Status Bar color
+            self.sync_label.text = "Offline (Saved Locally)"
+            self.sync_label.color = (1, 0.6, 0, 1) # Orange warning color
 
         # 3. Keep saving your local settings (ID, Font) to the phone/PC disk
         local = {'font_scale': self.font_scale, 'family_id': self.family_id}
@@ -552,25 +569,10 @@ class ShoppingApp(App):
             else: self.notify("master_data.json not found.")
         except Exception as e: self.notify(f"Restore Failed: {e}")
 
-    def export_data(self):
-        try:
-            with open(self.data_file, 'r') as f: data = json.load(f)
-            with open(self.backup_file, 'w') as f: json.dump(data, f, indent=4)
-            self.notify("Data Exported Successfully!")
-        except Exception as e: self.notify(f"Export Failed: {e}")
-
-    def import_data(self):
-        try:
-            if os.path.exists(self.backup_file):
-                with open(self.backup_file, 'r') as f: data = json.load(f)
-                with open(self.data_file, 'w') as f: json.dump(data, f, indent=4)
-                self.load_data(); self.list_spinner.values = list(self.all_lists.keys())
-                self.list_spinner.text = self.active_list_name; self.refresh_ui(); self.notify("Data Imported!")
-            else: self.notify("No Backup File Found.")
-        except Exception as e: self.notify(f"Import Failed: {e}")
-
     # --- UI & LISTS ---
     def refresh_ui(self, *args):
+        self.list_spinner.text = self.active_list_name
+        self.list_spinner.values = list(self.all_lists.keys())        
         self.list_layout.clear_widgets()
         active_bg = (1, 1, 1, 1)
         done_bg = (0.85, 0.85, 0.85, 1)
@@ -809,10 +811,33 @@ class ShoppingApp(App):
         self.process_addition(None)
 
     def update_family_id(self, new_id):
-        self.family_id = new_id  # Update the variable
-        self.save_data()         # Write to local_settings.json
-        self.sync_now()          # Pull the new list immediately
+        if not new_id:
+            return
+
+        # 1. Update the variable and the file path
+        self.family_id = new_id
+        self.data_file = os.path.join(self.user_data_dir, f"shopping_data_{self.family_id}.json")
+        
+        # 2. Save settings so it persists on restart
+        local = {'font_scale': self.font_scale, 'family_id': self.family_id}
+        local_path = os.path.join(self.user_data_dir, "local_settings.json")
+        with open(local_path, 'w') as f:
+            json.dump(local, f)
+
+        # 3. Reload the data for this NEW family
+        self.load_data()
+
+        # 4. --- CRITICAL UI UPDATES ---
+        # Explicitly update the spinner text and the available list names
+        self.list_spinner.values = list(self.all_lists.keys())
+        self.list_spinner.text = self.active_list_name
+        
+        # Redraw the main list items
         self.refresh_ui()
+        
+        # 5. Trigger cloud sync for the new ID
+        self.sync_now()
+        
         self.notify(f"Synced to ID: {self.family_id}")
 
     def sync_now(self, instance=None):
@@ -823,30 +848,60 @@ class ShoppingApp(App):
             self.sync_btn.background_color = (1, 1, 1, 1)
 
         try:
+            # 1. DOWNLOAD FIRST - Check what the cloud has before we speak
             res = requests.get(self.cloud_url, timeout=10, verify=certifi.where())
-
+            
             if res.status_code == 200:
                 data = res.json()
-                if data:
-                    # DYNAMIC CHECK: Look for whatever ID is currently in use
-                    # If the data is nested under the family_id (like CapybaraClan)
-                    if self.family_id in data:
-                        data = data[self.family_id]
+                cloud_data = data.get(self.family_id) if data else None
+
+                if cloud_data:
+                    # CLOUD HAS DATA: Adopt the cloud's reality
+                    cloud_lists = cloud_data.get('all_lists', {})
                     
-                    self.all_lists = data.get('all_lists', self.all_lists)
-                    self.categories = data.get('categories', self.categories)
-                    self.active_list_name = data.get('active_list_name', self.active_list_name)
+                    # Update local RAM
+                    self.all_lists = cloud_lists
+                    self.categories = cloud_data.get('categories', self.categories)
                     
+                    # CRITICAL FIX: Verify the list name exists in the data we just pulled
+                    cloud_active = cloud_data.get('active_list_name')
+                    if cloud_active in self.all_lists:
+                        self.active_list_name = cloud_active
+                    else:
+                        # If the cloud's active list name is weird, pick the first valid list available
+                        self.active_list_name = list(self.all_lists.keys())[0] if self.all_lists else "Groceries"
+
+                    # Save this good cloud data to our local file immediately
+                    with open(self.data_file, 'w') as f:
+                        json.dump({
+                            'all_lists': self.all_lists,
+                            'categories': self.categories,
+                            'active_list_name': self.active_list_name
+                        }, f, indent=4)
+
                     self.refresh_ui()
-                    self.sync_label.text = f"Last Synced: {datetime.now().strftime('%H:%M:%S')}"
-                    Clock.schedule_once(reset_button_color, 1)
-            else:
-                self.sync_label.text = "Sync Error"
-                self.sync_btn.background_color = (1, 0.3, 0.3, 1)
-                Clock.schedule_once(reset_button_color, 1)
+                    self.sync_label.text = f"Pulled: {datetime.now().strftime('%H:%M:%S')}"
+                    self.sync_label.color = (0.6, 0.6, 0.6, 1)
+                
+                else:
+                    # CLOUD IS EMPTY: Now it is safe to upload our local data
+                    has_real_content = any(
+                        any(isinstance(i, dict) and i.get('name') != "PLACEHOLDER" for i in items)
+                        for items in self.all_lists.values()
+                    )
+                    
+                    if has_real_content:
+                        self.save_data() # This pushes local to cloud
+                        self.sync_label.text = "Cloud Initialized"
+                    else:
+                        self.sync_label.text = "Both Empty"
+
+            Clock.schedule_once(reset_button_color, 1)
 
         except Exception as e:
+            print(f"Sync failed: {e}")
             self.sync_label.text = "Offline"
+            self.sync_label.color = (1, 0.6, 0, 1) 
             self.sync_btn.background_color = (1, 0.3, 0.3, 1)
             Clock.schedule_once(reset_button_color, 1)
 
@@ -869,13 +924,60 @@ class ShoppingApp(App):
             self.stats_label.text = f"{remaining}/{total} left to find"
 
     def on_start(self):
-        # This is a special Kivy function that runs 
-        # automatically AFTER build is finished.
-        Clock.schedule_once(self.auto_sync, 0.5)
+        # Only auto-sync if we have a family ID set
+        if self.family_id and self.family_id != "DefaultFamily":
+            Clock.schedule_once(self.auto_sync, 0.5)
 
     def auto_sync(self, dt):
         # This calls your existing sync code
         self.sync_now()
+
+    def force_download_confirmed(self, *args):
+        self.sync_label.text = "Forcing Download..."
+        try:
+            res = requests.get(self.cloud_url, timeout=10, verify=certifi.where())
+            if res.status_code == 200:
+                data = res.json()
+                
+                # We pull the data for your specific family_id
+                # If the family_id doesn't even exist in the JSON, we use an empty dict
+                cloud_data = data.get(self.family_id, {})
+
+                # 1. OVERWRITE RAM
+                # We pull from cloud_data. If a key is missing, we use safe defaults.
+                self.all_lists = cloud_data.get('all_lists', {})
+                self.categories = cloud_data.get('categories', self.categories)
+                self.active_list_name = cloud_data.get('active_list_name', 'Groceries')
+
+                # 2. SAFETY CHECK / PLACEHOLDER RE-ENTRY
+                # If the cloud was empty or the active list doesn't exist/is empty:
+                if self.active_list_name not in self.all_lists or not self.all_lists[self.active_list_name]:
+                    self.all_lists[self.active_list_name] = [
+                        {"name": "PLACEHOLDER", "done": False, "category": "Uncategorized"}
+                    ]
+
+                # 3. SAVE TO DISK
+                with open(self.data_file, 'w') as f:
+                    json.dump({
+                        'all_lists': self.all_lists,
+                        'categories': self.categories,
+                        'active_list_name': self.active_list_name
+                    }, f, indent=4)
+                
+                # 4. REFRESH UI
+                # IMPORTANT: Ensure refresh_ui updates the Spinner text/values too!
+                self.refresh_ui()
+                
+                self.sync_label.text = "Cloud Overwrote Phone"
+                self.sync_label.color = (0.6, 0.6, 0.6, 1)
+            else:
+                self.sync_label.text = f"Server Error: {res.status_code}"
+                
+        except Exception as e:
+            print(f"Force Download Error: {e}")
+            self.sync_label.text = "Pull Failed"
+            self.sync_label.color = (1, 0.6, 0, 1)
+
 
 if __name__ == '__main__':
     ShoppingApp().run()
