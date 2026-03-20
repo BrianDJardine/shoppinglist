@@ -1,144 +1,371 @@
 {
   "CapybaraClan": {
-    "active_list_name": "Weekly Tesco",
-    "all_lists": {
-      "Friday Tesco": [
-        {
-          "cat": "Uncategorized",
-          "count": 1,
-          "done": false,
-          "name": "PLACEHOLDER"
+    "CapybaraClan": {
+      "active_list_name": "Friday Tesco",
+      "all_lists": {
+        "Friday Tesco": [
+          {
+            "cat": "Uncategorized",
+            "count": 1,
+            "done": false,
+            "name": "PLACEHOLDER"
+          }
+        ],
+        "Weekly Tesco": [
+          {
+            "cat": "Uncategorized",
+            "count": 1,
+            "done": false,
+            "name": "PLACEHOLDER"
+          }
+        ]
+      },
+      "categories": {
+        "Asian indian mexican": {
+          "keywords": [
+            "ms curry",
+            "prawn crackers",
+            "katsu sauce",
+            "coconut milk",
+            "poppadoms"
+          ],
+          "order": 24
+        },
+        "Beans pot noodle tin veg": {
+          "keywords": [
+            "baked beans"
+          ],
+          "order": 22
+        },
+        "Booze": {
+          "keywords": [
+            "beer",
+            "wine",
+            "fizzy wine",
+            "whisky"
+          ],
+          "order": 34
+        },
+        "Bread and cakes": {
+          "keywords": [
+            "bread",
+            "burger buns",
+            "tiger bread"
+          ],
+          "order": 6
+        },
+        "Breaded Chicken": {
+          "keywords": [
+            "chicken goujons"
+          ],
+          "order": 15
+        },
+        "Butter and yogurt": {
+          "keywords": [
+            "butter",
+            "yogurt",
+            "poop yogurt",
+            "ms yogurt"
+          ],
+          "order": 9
+        },
+        "Cereal and jam": {
+          "keywords": [
+            "weetabix",
+            "banana weetabix",
+            "chocolate weetabix",
+            "brekkie"
+          ],
+          "order": 29
+        },
+        "Cheese": {
+          "keywords": [
+            "cheese",
+            "cream cheese",
+            "goats cheese",
+            "mozzarella"
+          ],
+          "order": 10
+        },
+        "Chicken": {
+          "keywords": [
+            "chicken breast",
+            "chicken thighs"
+          ],
+          "order": 17
+        },
+        "Chocolate and sweets": {
+          "keywords": [
+            "ms chocolate",
+            "sweets for the car",
+            "chocolate"
+          ],
+          "order": 30
+        },
+        "Cleaning": {
+          "keywords": [
+            "wipes",
+            "floor wipes",
+            "tin foil",
+            "cling film",
+            "washing up liquid"
+          ],
+          "order": 19
+        },
+        "Clothes": {
+          "keywords": [
+            "ms white shirt"
+          ],
+          "order": 7
+        },
+        "Cooked meats": {
+          "keywords": [
+            "cooked chicken breast",
+            "ms lunch"
+          ],
+          "order": 12
+        },
+        "Dairy and juice": {
+          "keywords": [
+            "milk",
+            "ms juice",
+            "orange juice with bits",
+            "orange juice without bits",
+            "double cream",
+            "creme fraiche"
+          ],
+          "order": 8
+        },
+        "Fish": {
+          "keywords": [
+            "salmon",
+            "cod",
+            "fish pie mix"
+          ],
+          "order": 16
+        },
+        "Fresh pasta": {
+          "keywords": [
+            "ms sausage pasta",
+            "ms gnocchi"
+          ],
+          "order": 13
+        },
+        "Fruit": {
+          "keywords": [
+            "mango",
+            "bananas",
+            "strawberries",
+            "lemon",
+            "grapes",
+            "apples",
+            "pink lady apples"
+          ],
+          "order": 2
+        },
+        "Gluten free": {
+          "keywords": [
+            "gluten free pasta",
+            "gluten free spaghetti",
+            "gluten free gnocchi"
+          ],
+          "order": 28
+        },
+        "Homeware": {
+          "keywords": [
+            "glue",
+            "birthday card",
+            "paper",
+            "wrapping paper"
+          ],
+          "order": 1
+        },
+        "Italian": {
+          "keywords": [
+            "pasta",
+            "ms pasta",
+            "spaghetti",
+            "pasta sauce",
+            "gnocchi"
+          ],
+          "order": 23
+        },
+        "Meat": {
+          "keywords": [
+            "sausages",
+            "mince",
+            "steak",
+            "burger",
+            "lamb steak"
+          ],
+          "order": 18
+        },
+        "Pizzas and ready meals": {
+          "keywords": [
+            "ms pizza",
+            "dough balls"
+          ],
+          "order": 14
+        },
+        "Snacks": {
+          "keywords": [
+            "nuts",
+            "doritos"
+          ],
+          "order": 33
+        },
+        "Spices and home baking": {
+          "keywords": [
+            "lazy garlic",
+            "eggs",
+            "sugar"
+          ],
+          "order": 27
+        },
+        "Tea and coffee": {
+          "keywords": [
+            "coffee bags",
+            "coffee beans",
+            "tea",
+            "rooibos tea"
+          ],
+          "order": 32
+        },
+        "Tinned tomatoes pulses": {
+          "keywords": [
+            "tinned tomatoes",
+            "kidney beans in chilli sauce",
+            "kidney beans in water"
+          ],
+          "order": 26
+        },
+        "Toiletries": {
+          "keywords": [
+            "soap",
+            "toothpaste",
+            "lynx",
+            "shaving gel"
+          ],
+          "order": 5
+        },
+        "Uncategorized": {
+          "order": 99
+        },
+        "Veg 1": {
+          "keywords": [
+            "onion",
+            "red onion",
+            "green salad",
+            "salad",
+            "baby spinach",
+            "parsley",
+            "rosemary",
+            "garlic cloves",
+            "ginger",
+            "tomatoes",
+            "red pepper",
+            "green pepper",
+            "yellow pepper",
+            "pepper selection",
+            "coriander",
+            "lettuce"
+          ],
+          "order": 3
+        },
+        "Veg 2": {
+          "keywords": [
+            "baked potato",
+            "jacket potato",
+            "maris piper potatoes",
+            "green beans",
+            "tender stem broccoli",
+            "baby sweetcorn",
+            "avocado",
+            "edamame beans",
+            "fresh noodles",
+            "fresh stir fry sauce"
+          ],
+          "order": 4
+        },
+        "frozen": {
+          "keywords": [
+            "frozen chunky chips",
+            "frozen french fries",
+            "frozen peas"
+        ],            
+          "order": 35
+        },
+        "juice cartons fizzy drinks": {
+          "keywords": [
+            "ms lunch juice"
+        ],  
+          "order": 31
+        },
+        "kitchen and bog roll": {
+          "keywords": [
+            "kitchen roll",
+            "bog roll",
+            "tissues"
+        ],                  
+          "order": 21
+        },
+        "laundry": {
+          "keywords": [
+            "washing balls",
+            "clothes washing stuff",
+            "dishwasher tablets",
+            "washing machine tablets",
+            "comfort"
+         ],
+          "order": 20
+        },
+        "oils and sauces": {
+          "keywords": [
+            "olive oil",
+            "mayonnaise",
+            "nando sauce"
+        ],            
+          "order": 25
+        },
+        "fresh soup": {
+          "keywords": [
+            "tomato soup",
+            "chicken soup",
+            "chicken and sweetcorn soup"
+        ],                
+          "order": 11
         }
-      ],
-      "Weekly Tesco": [
-        {
-          "cat": "Uncategorized",
-          "count": 1,
-          "done": false,
-          "name": "PLACEHOLDER"
+      }
+    }
+  },
+  "squirrels": {
+    "squirrels": {
+      "active_list_name": "Groceries",
+      "all_lists": {
+        "Groceries": [
+          {
+            "category": "Uncategorized",
+            "done": false,
+            "name": "PLACEHOLDER"
+          },
+          {
+            "cat": "Snacks",
+            "count": 8,
+            "done": false,
+            "name": "Nuts"
+          }
+        ]
+      },
+      "categories": {
+        "Snacks": {
+          "keywords": [
+            "nuts"
+          ],
+          "order": 1
+        },
+        "Uncategorized": {
+          "order": 99
         }
-      ]
-    },
-    "categories": {
-      "Homeware": {
-        "order": 1,
-        "keywords": ["glue", "birthday card", "paper", "wrapping paper"]
-      },
-      "Fruit": {
-        "order": 2,
-        "keywords": ["mango", "bananas", "strawberries", "lemon", "grapes", "apples", "pink lady apples"]
-      },
-      "Toiletries": {
-        "order": 3,
-        "keywords": ["soap", "toothpaste", "lynx", "shaving gel"]
-      },
-      "Veg 1": {
-        "order": 4,
-        "keywords": ["onion", "red onion", "green salad", "salad", "baby spinach", "parsley", "rosemary", "garlic cloves", "ginger", "tomatoes", "red pepper", "green pepper", "yellow pepper", "pepper selection"]
-      },
-      "Veg 2": {
-        "order": 5,
-        "keywords": ["baked potato", "jacket potato", "maris piper potatoes", "green beans", "tender stem broccoli", "baby sweetcorn", "avocado", "edamame beans", "fresh noodles", "fresh stir fry sauce"]
-      },
-      "Bread and cakes": {
-        "order": 6,
-        "keywords": ["bread", "burger buns", "tiger bread"]
-      },
-      "Clothes": {
-        "order": 7,
-        "keywords": ["ms white shirt"]
-      },
-      "Dairy and juice": {
-        "order": 8,
-        "keywords": ["milk", "ms juice", "orange juice with bits", "orange juice without bits", "double cream", "creme fraiche"]
-      },
-      "Butter and yogurt": {
-        "order": 9,
-        "keywords": ["butter", "yogurt", "poop yogurt", "ms yogurt"]
-      },
-      "Cheese": {
-        "order": 10,
-        "keywords": ["cheese", "cream cheese", "goats cheese", "mozzarella"]
-      },
-      "Cooked meats": {
-        "order": 11,
-        "keywords": ["cooked chicken breast", "ms lunch"]
-      },
-      "Fresh pasta": {
-        "order": 12,
-        "keywords": ["ms sausage pasta", "ms gnocchi"]
-      },
-      "Pizzas and ready meals": {
-        "order": 13,
-        "keywords": ["ms pizza", "dough balls"]
-      },
-      "Breaded Chicken": {
-        "order": 14,
-        "keywords": ["chicken goujons"]
-      },
-      "Fish": {
-        "order": 15,
-        "keywords": ["salmon", "cod", "fish pie mix"]
-      },
-      "Meat": {
-        "order": 16,
-        "keywords": ["sausages", "mince", "steak", "burger", "lamb steak"]
-      },
-      "Chicken": {
-        "order": 17,
-        "keywords": ["chicken breast", "chicken thighs"]
-      },
-      "Cleaning": {
-        "order": 18,
-        "keywords": ["bog roll", "tissues", "washing balls", "wipes", "floor wipes", "tin foil", "cling film", "washing up liquid", "clothes washing stuff", "dishwasher tablets", "washing machine tablets", "comfort"]
-      },
-      "Beans and Pulses": {
-        "order": 19,
-        "keywords": ["baked beans"]
-      },
-      "Italian": {
-        "order": 20,
-        "keywords": ["pasta", "ms pasta", "spaghetti", "pasta sauce", "gnocchi"]
-      },
-      "Asian and mexican": {
-        "order": 21,
-        "keywords": ["ms curry", "prawn crackers", "katsu sauce"]
-      },
-      "Tinned veg": {
-        "order": 22,
-        "keywords": ["tinned tomatoes", "kidney beans in chilli sauce", "kidney beans in water"]
-      },
-      "Spices and home baking": {
-        "order": 23,
-        "keywords": ["lazy garlic", "eggs"]
-      },
-      "Gluten free": {
-        "order": 24,
-        "keywords": ["gluten free pasta", "gluten free spaghetti", "gluten free gnocchi"]
-      },
-      "Cereal and juice cartons": {
-        "order": 25,
-        "keywords": ["ms lunch juice", "weetabix", "banana weetabix", "chocolate weetabix", "brekkie"]
-      },
-      "Chocolate and sweets": {
-        "order": 26,
-        "keywords": ["ms chocolate", "sweets for the car"]
-      },
-      "Tea and coffee": {
-        "order": 27,
-        "keywords": ["coffee bags", "coffee beans", "tea", "rooibos tea"]
-      },
-      "Snacks": {
-        "order": 28,
-        "keywords": ["nuts", "doritos"]
-      },
-      "Booze": {
-        "order": 29,
-        "keywords": ["beer", "wine", "fizzy wine", "whisky"]
-      },
-      "Uncategorized": {
-        "order": 99,
-        "keywords": []
       }
     }
   }
