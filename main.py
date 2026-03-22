@@ -325,7 +325,8 @@ class SettingsScreen(Screen):
 # --- MAIN APP ---
 class ShoppingApp(App):
     # Your Firebase URL
-    BASE_URL = "https://shoppinglist-eae1c-default-rtdb.europe-west1.firebasedatabase.app/"
+    BASE_URL = "https://shoppinglist-eae1c-default-rtdb.europe-west1.firebasedatabase.app/protect_data/AppV1_Secure_99xCapybarasForever"
+
 
     def build(self):
         # We need to determine the family_id BEFORE setting self.data_file
