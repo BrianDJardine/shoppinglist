@@ -452,19 +452,59 @@ class ShoppingApp(App):
         else: self.show_category_popup(name)
 
     def show_category_popup(self, name):
+        app = App.get_running_app()
         outer = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        outer.add_widget(Label(text=f"Category for: {name.upper()}", size_hint_y=None, height=dp(40), bold=True))
+        
+        # 1. Neutralize the Title Label
+        outer.add_widget(Label(
+            text=f"Category for: {name.upper()}", 
+            size_hint_y=None, 
+            height=app.row_height * 0.8, 
+            bold=True,
+            font_size=app.f_size,
+            color=(1, 1, 1, 1) # White text for the dark popup background
+        ))
+        
         scroll = ScrollView(size_hint=(1, 1))
+        # 2. Use a dynamic height for the grid
         grid = GridLayout(cols=2, spacing=dp(10), size_hint_y=None)
         grid.bind(minimum_height=grid.setter('height'))
+        
         pop = Popup(title="Select Category", content=outer, size_hint=(0.9, 0.8))
+        
+        # 3. Neutralize the Category Buttons
         for cat in sorted(self.categories.keys()):
-            btn = Button(text=cat.upper(), size_hint_y=None, height=dp(55), background_color=(0.2, 0.6, 1, 1))
+            btn = Button(
+                text=cat.upper(), 
+                size_hint_y=None, 
+                height=app.row_height, # Matches your list row height
+                font_size=app.f_size,   # Uses neutralized font
+                background_color=(0.2, 0.6, 1, 1),
+                halign='center',      # Center text horizontally
+                valign='middle',      # Center text vertically
+                text_size=(None, None) # Initialize text size
+            )
+            # This line tells the text it has to stay within the width of the button
+            btn.bind(size=lambda s, w: setattr(s, 'text_size', (w[0] - dp(10), None)))
+
             btn.bind(on_release=lambda b, c=cat: self.finalize_addition(name, c, pop))
             grid.add_widget(btn)
-        scroll.add_widget(grid); outer.add_widget(scroll)
-        cancel = Button(text="CANCEL", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.8, 0.2, 0.2, 1))
-        cancel.bind(on_release=pop.dismiss); outer.add_widget(cancel); pop.open()
+            
+        scroll.add_widget(grid)
+        outer.add_widget(scroll)
+        
+        # 4. Neutralize the Cancel Button
+        cancel = Button(
+            text="CANCEL", 
+            size_hint_y=None, 
+            height=app.row_height, 
+            font_size=app.f_size,
+            background_color=(0.8, 0.2, 0.2, 1)
+        )
+        cancel.bind(on_release=pop.dismiss)
+        outer.add_widget(cancel)
+        
+        pop.open()
 
     def finalize_addition(self, name, cat, popup):
         if name.lower() not in [k.lower() for k in self.categories[cat].get('keywords', [])]:
