@@ -168,24 +168,69 @@ class CategoryScreen(Screen):
         self.cat_list_layout.clear_widgets()
         app = App.get_running_app()
         if not app.categories: return
+        
+        # Neutralizer for the icons
+        s = getattr(Metrics, 'fontscale', 1.0)
+        if s <= 0: s = 1.0
+        # This keeps the buttons at a consistent physical size (~38dp)
+        icon_btn_size = dp(38 / s) 
+
         sorted_cats = sorted(app.categories.items(), key=lambda x: x[1].get('order', 99))
         
         for name, data in sorted_cats:
             row = BoxLayout(size_hint_y=None, height=app.row_height, spacing=dp(5))
-            order_box = BoxLayout(orientation='vertical', size_hint_x=None, width=dp(45))
-            up = Button(text="^"); up.bind(on_release=lambda x, n=name: self.move_cat(n, -1))
-            dn = Button(text="v"); dn.bind(on_release=lambda x, n=name: self.move_cat(n, 1))
-            order_box.add_widget(up); order_box.add_widget(dn)
             
-            lbl = Button(text=name.upper(), font_size=app.f_size, bold=True, background_color=(0.2, 0.2, 0.2, 1), halign='left', valign='middle')
+            # --- Order Buttons (PNGs) ---
+            # Width is icon_btn_size * 2 + spacing
+            order_box = BoxLayout(orientation='horizontal', size_hint_x=None, width=icon_btn_size * 2 + dp(4))
+            
+            up = Button(
+                background_normal='up-arrow.png',
+                size_hint=(None, None),
+                size=(icon_btn_size, icon_btn_size),
+                pos_hint={'center_y': 0.5}
+            )
+            up.bind(on_release=lambda x, n=name: self.move_cat(n, -1))
+            
+            dn = Button(
+                background_normal='down-arrow.png',
+                size_hint=(None, None),
+                size=(icon_btn_size, icon_btn_size),
+                pos_hint={'center_y': 0.5}
+            )
+            dn.bind(on_release=lambda x, n=name: self.move_cat(n, 1))
+            
+            order_box.add_widget(up)
+            order_box.add_widget(dn)
+            # ----------------------------
+
+            lbl = Button(
+                text=name.upper(), 
+                font_size=app.f_size, 
+                bold=True, 
+                background_color=(0.2, 0.2, 0.2, 1), 
+                halign='left', 
+                valign='middle'
+            )
             lbl.bind(size=lbl.setter('text_size'))
             lbl.bind(on_release=lambda x, n=name: self.rename_category_popup(n))
             
-            row.add_widget(order_box); row.add_widget(lbl)
+            row.add_widget(order_box)
+            row.add_widget(lbl)
+            
             if name != "Uncategorized":
-                del_btn = Button(text="X", size_hint_x=None, width=dp(50), background_color=(0.8, 0.2, 0.2, 1))
+                # Neutralize the Delete 'X' button size as well
+                del_btn = Button(
+                    text="X", 
+                    size_hint_x=None, 
+                    width=dp(50 / s), 
+                    font_size=app.f_size,
+                    bold=True,
+                    background_color=(0.8, 0.2, 0.2, 1)
+                )
                 del_btn.bind(on_release=lambda x, n=name: self.delete_category(n))
                 row.add_widget(del_btn)
+                
             self.cat_list_layout.add_widget(row)
 
     def rename_category_popup(self, old_name):
