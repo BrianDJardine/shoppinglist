@@ -67,7 +67,9 @@ class ListItem(BoxLayout):
             shorten=True,
             shorten_from='right',
             size_hint_x=1,
-            color=(0, 0, 0, 1)
+            color=(0, 0, 0, 1),
+            size_hint_y=None,
+            height=app.row_height
         )
         self.label.bind(size=self.label.setter('text_size'))
         self.add_widget(self.label)
@@ -109,6 +111,8 @@ class ListItem(BoxLayout):
 class CategoryScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        app = App.get_running_app()
+
         self.container = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
 
         #header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10), padding=[dp(10), 0])
@@ -125,12 +129,21 @@ class CategoryScreen(Screen):
         back_btn = Button(background_normal='back.png', size_hint=(None, None), size=(dp(35), dp(35)), pos_hint={'center_y': 0.5})
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
         header.add_widget(back_btn)
-        header.add_widget(Label(text="CATEGORIES", font_size=dp(20), bold=True))
+        header.add_widget(Label(text="CATEGORIES", font_size=dp(18), bold=True))
         self.container.add_widget(header)
 
         add_box = BoxLayout(size_hint_y=None, height=App.get_running_app().row_height, spacing=dp(5))
-        self.new_cat_input = TextInput(hint_text="New Category...", multiline=False)
-        add_btn = Button(text="ADD", size_hint_x=0.3, background_color=(0.2, 0.7, 0.3, 1), bold=True)
+        self.new_cat_input = TextInput(hint_text="New Category...", multiline=False, font_size=app.f_size)
+
+        add_btn = Button(
+            text='ADD', 
+            size_hint_x=0.25, 
+            background_color=(0.2, 0.7, 0.3, 1), 
+            bold=True, 
+            on_press=self.add_category,
+            font_size=app.f_size
+        )
+        
         add_btn.bind(on_release=self.add_category)
         add_box.add_widget(self.new_cat_input)
         add_box.add_widget(add_btn)
@@ -177,11 +190,20 @@ class CategoryScreen(Screen):
 
     def rename_category_popup(self, old_name):
         if old_name == "Uncategorized": return
+        app = App.get_running_app()
+        s_font = app.f_size
+
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        inp = TextInput(text=old_name, multiline=False, size_hint_y=None, height=App.get_running_app().row_height)
+        inp = TextInput(text=old_name, multiline=False, size_hint_y=None, 
+                        height=app.row_height, font_size=s_font)
         content.add_widget(inp)
-        btn = Button(text="UPDATE", size_hint_y=None, height=App.get_running_app().row_height, bold=True)
-        content.add_widget(btn); p = Popup(title="Rename", content=content, size_hint=(0.8, 0.4))
+
+        btn = Button(text="UPDATE", size_hint_y=None, height=app.row_height, 
+                     bold=True, font_size=s_font)
+        content.add_widget(btn)
+        
+        p = Popup(title="Rename", content=content, size_hint=(0.8, 0.4))
+
         def do_rename(x):
             new_name = inp.text.strip()
             app = App.get_running_app()
@@ -224,7 +246,11 @@ class CategoryScreen(Screen):
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(15))
+        app = App.get_running_app()
+        # Use a secondary font size (75% of main)
+        s_font = app.f_size * 0.75
+
+        self.layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
         header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10))
         with header.canvas.before:
             Color(0.15, 0.15, 0.15, 1)
@@ -234,25 +260,25 @@ class SettingsScreen(Screen):
         back_btn = Button(background_normal='back.png', size_hint=(None, None), size=(dp(35), dp(35)), pos_hint={'center_y': 0.5})
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
         header.add_widget(back_btn)
-        header.add_widget(Label(text="SETTINGS", font_size=dp(20), bold=True))
+        header.add_widget(Label(text="SETTINGS", font_size=dp(18), bold=True))
         self.layout.add_widget(header)
 
-        self.layout.add_widget(Label(text="Display Text Size:", size_hint_y=None, height=dp(30)))
-        self.font_spinner = Spinner(text="Large", values=("Smallest", "Small", "Medium", "Large"), size_hint_y=None, height=App.get_running_app().row_height)
+        self.layout.add_widget(Label(text="Display Text Size:", size_hint_y=None, height=dp(30), font_size=s_font))
+        self.font_spinner = Spinner(text="Large", values=("Smallest", "Small", "Medium", "Large"), size_hint_y=None, height=app.row_height * 0.8, font_size=s_font, option_cls=CustomSpinnerOption)
         self.font_spinner.bind(text=lambda s, t: App.get_running_app().change_font_size(t))
         self.layout.add_widget(self.font_spinner)
 
-        self.id_input = TextInput(multiline=False, size_hint_y=None, height=App.get_running_app().row_height, hint_text="Family ID...")
+        self.id_input = TextInput(multiline=False, size_hint_y=None, height=App.get_running_app().row_height, hint_text="Family ID...", font_size=s_font)
         self.layout.add_widget(self.id_input)
-        save_btn = Button(text="UPDATE ID", size_hint_y=None, height=dp(55), background_color=(0.2, 0.6, 1, 1), bold=True)
+        save_btn = Button(text="UPDATE ID", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.6, 1, 1), bold=True, font_size=s_font)
         save_btn.bind(on_release=self.apply_id_change)
         self.layout.add_widget(save_btn)
 
-        push_btn = Button(text="FORCE UPLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.7, 0.3, 1))
+        push_btn = Button(text="FORCE UPLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.7, 0.3, 1), font_size=s_font)
         push_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Upload data?", App.get_running_app().save_data))
         self.layout.add_widget(push_btn)
 
-        pull_btn = Button(text="FORCE DOWNLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.7, 0.5, 0.2, 1))
+        pull_btn = Button(text="FORCE DOWNLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.7, 0.5, 0.2, 1), font_size=s_font)
         pull_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Overwrite from cloud?", App.get_running_app().force_download_confirmed))
         self.layout.add_widget(pull_btn)
 
@@ -298,24 +324,41 @@ class ShoppingApp(App):
         main_layout = BoxLayout(orientation='vertical', padding=dp(8), spacing=dp(6))
         
         # --- HEADER (Scrollable Icons) ---
-        header_row = BoxLayout(size_hint_y=None, height=self.row_height * 0.8, spacing=dp(5))
+        # Lock the header height to a consistent size
+        s = getattr(Metrics, 'fontscale', 1.0)
+        if s <= 0: s = 1.0
+        header_height = dp(55 / s)
+
+        #header_height = max(self.row_height * 0.8, dp(50)) 
+        header_row = BoxLayout(size_hint_y=None, height=header_height)
         self.list_spinner = Spinner(text=self.active_list_name, values=list(self.all_lists.keys()),
-                                    size_hint_x=0.25, background_color=(0.15, 0.15, 0.15, 1), bold=False, 
-                                    font_size=self.f_size, option_cls=CustomSpinnerOption)
+                                    size_hint_x=0.28, background_color=(0.15, 0.15, 0.15, 1), bold=False, 
+                                    font_size=self.f_size * 0.9, option_cls=CustomSpinnerOption)
         self.list_spinner.bind(text=self.switch_list)
         header_row.add_widget(self.list_spinner)
 
         # Icon ScrollView prevents squashing on large font phones
-        icon_scroll = ScrollView(
-                size_hint_x=0.65,
-                do_scroll_y=False
-            )
-        icon_row = BoxLayout(size_hint_x=None, spacing=dp(4))
+        icon_scroll = ScrollView(do_scroll_y=False, size_hint_x=0.72)
+        icon_row = BoxLayout(size_hint_x=None, spacing=dp(2)) # Tighter spacing
         icon_row.bind(minimum_width=icon_row.setter('width'))
 
         def quick_btn(img, callback, tint=(1, 1, 1, 1)):
-            b = Button(background_normal=img, on_release=callback, background_color=tint, 
-                       size_hint=(None, None), size=(self.row_height * 0.6, self.row_height * 0.6), pos_hint={'center_y': 0.5})
+            # Get the current system scale
+            s = getattr(Metrics, 'fontscale', 1.0)
+            if s <= 0: s = 1.0
+
+            #btn_dim = dp(45)
+            btn_dim = dp(40 / s)
+
+            b = Button(
+                background_normal=img, 
+                on_release=callback, 
+                background_color=tint, 
+                size_hint=(None, None), 
+                size=(btn_dim, btn_dim), 
+                pos_hint={'center_y': 0.5}
+            )
+
             return b
 
         icon_row.add_widget(quick_btn('new.png', self.create_new_list, (0.2, 1, 0.2, 1))) 
@@ -335,14 +378,25 @@ class ShoppingApp(App):
         input_box = BoxLayout(size_hint_y=None, height=self.row_height, spacing=dp(5))
         self.item_input = TextInput(hint_text='Add item...', multiline=False, font_size=self.f_size)
         self.item_input.bind(text=self.on_type_prediction)
-        add_btn = Button(text='ADD', size_hint_x=0.25, background_color=(0.2, 0.7, 0.3, 1), bold=True, on_press=self.process_addition)
+
+        add_btn = Button(
+            text='ADD', 
+            size_hint_x=0.25, 
+            background_color=(0.2, 0.7, 0.3, 1), 
+            bold=True, 
+            on_press=self.process_addition,
+            font_size=self.f_size 
+        )
+        
         input_box.add_widget(self.item_input)
         input_box.add_widget(add_btn)
         main_layout.add_widget(input_box)
 
         self.list_layout = GridLayout(cols=1, size_hint_y=None, spacing=dp(6))
         self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
-        scroll = ScrollView(); scroll.add_widget(self.list_layout)
+        scroll = ScrollView(size_hint_y=1, do_scroll_x=False) 
+        scroll.add_widget(self.list_layout)
+
         main_layout.add_widget(scroll)
 
         # STATUS
@@ -354,10 +408,23 @@ class ShoppingApp(App):
         
         # FOOTER
         bot = BoxLayout(size_hint_y=None, height=self.row_height, spacing=dp(5))
-        self.done_btn = Button(text="SHOW DONE", on_press=self.toggle_completed, bold=True, font_size=dp(14))
-        del_done_btn = Button(text="DEL DONE", background_color=(0.7, 0.3, 0.3, 1), bold=True, on_press=lambda x: self.confirm_action("Delete done?", self.clear_completed), font_size=dp(14))
-        clear_btn = Button(text="CLEAR", background_color=(0.9, 0.4, 0.4, 1), bold=True, on_press=lambda x: self.confirm_action("Wipe list?", self.clear_entire_list), font_size=dp(14))
-        bot.add_widget(self.done_btn); bot.add_widget(del_done_btn); bot.add_widget(clear_btn)
+
+        self.done_btn = Button(text="SHOW\nDONE", halign='center', valign='middle', bold=True, font_size=dp(14))
+        self.done_btn.bind(size=lambda s, w: setattr(s, 'text_size', (w[0], None)))
+        self.done_btn.bind(on_press=self.toggle_completed)
+
+        del_done_btn = Button(text="DELETE\nDONE", halign='center', valign='middle', background_color=(0.7, 0.3, 0.3, 1), bold=True, font_size=dp(14))
+        del_done_btn.bind(size=lambda s, w: setattr(s, 'text_size', (w[0], None)))
+        del_done_btn.bind(on_press=lambda x: self.confirm_action("Delete done?", self.clear_completed))
+        
+        clear_btn = Button(text="CLEAR\nLIST", halign='center', valign='middle', background_color=(0.9, 0.4, 0.4, 1), bold=True, font_size=dp(14))
+        clear_btn.bind(size=lambda s, w: setattr(s, 'text_size', (w[0], None)))
+        clear_btn.bind(on_press=lambda x: self.confirm_action("Wipe list?", self.clear_entire_list))
+
+        bot.add_widget(self.done_btn)
+        bot.add_widget(del_done_btn)
+        bot.add_widget(clear_btn)
+
         main_layout.add_widget(bot)
 
         self.main_page.add_widget(main_layout); self.sm.add_widget(self.main_page)
@@ -367,18 +434,21 @@ class ShoppingApp(App):
         self.refresh_ui(); return self.sm
 
     def update_font_metrics(self):
-        # Neutralize system font scale
-        # If user has 1.5x zoom, we divide by 1.5 to keep physical size consistent
-        s = Metrics.fontscale if Metrics.fontscale > 0 else 1.0
+        # Safety check: if Metrics isn't ready, default to 1.0
+        s = getattr(Metrics, 'fontscale', 1.0)
+        if s <= 0: 
+            s = 1.0
 
+        # If the text is STILL invisible, it might be too small. 
+        # Let's set a 'floor' (minimum size)
         if self.font_scale == "Smallest":
-            self.f_size, self.row_height = dp(14/s), dp(55/s)
+            self.f_size, self.row_height = max(dp(12), dp(14/s)), max(dp(45), dp(55/s))
         elif self.font_scale == "Small":
-            self.f_size, self.row_height = dp(18/s), dp(65/s)
+            self.f_size, self.row_height = max(dp(14), dp(18/s)), max(dp(50), dp(65/s))
         elif self.font_scale == "Medium":
-            self.f_size, self.row_height = dp(22/s), dp(75/s)
+            self.f_size, self.row_height = max(dp(18), dp(22/s)), max(dp(60), dp(75/s))
         else: # Large
-            self.f_size, self.row_height = dp(26/s), dp(85/s)
+            self.f_size, self.row_height = max(dp(22), dp(26/s)), max(dp(70), dp(85/s))
 
     def change_font_size(self, size):
         self.font_scale = size
@@ -522,7 +592,7 @@ class ShoppingApp(App):
 
     def toggle_completed(self, instance): 
         self.show_completed = not self.show_completed
-        self.done_btn.text = "HIDE DONE" if self.show_completed else "SHOW DONE"
+        self.done_btn.text = "HIDE\nDONE" if self.show_completed else "SHOW\nDONE"
         self.refresh_ui()
 
     def clear_completed(self, instance=None):
@@ -539,6 +609,15 @@ class ShoppingApp(App):
             self.load_data(); self.refresh_ui(); self.sync_now()
 
     def sync_now(self, instance=None):
+        if instance and hasattr(instance, 'background_color'):
+            instance.background_color = (0.2, 1, 0.2, 1) # Green
+
+            self.sync_label.text = "Syncing..."
+
+            Clock.schedule_once(lambda dt: self._perform_sync(dt, instance), 0.3)
+
+    def _perform_sync(self, dt, instance=None):
+        success = False
         try:
             res = requests.get(self.cloud_url, timeout=5, verify=certifi.where())
             if res.status_code == 200:
@@ -548,21 +627,53 @@ class ShoppingApp(App):
                     self.all_lists = cloud.get('all_lists', self.all_lists)
                     self.categories = cloud.get('categories', self.categories)
                     self.active_list_name = cloud.get('active_list_name', self.active_list_name)
+                    
                     self.refresh_ui()
-                    self.sync_label.text = "Cloud Synced"
-        except: self.sync_label.text = "Sync Failed"
+                    
+                    now = datetime.now().strftime("%H:%M")
+                    self.sync_label.text = f"Synced: {now}"
+                    # Make sure label is grey/white for success
+                    self.sync_label.color = (0.6, 0.6, 0.6, 1) 
+                    success = True
+            else:
+                self.sync_label.text = "Sync Error"
+                self.sync_label.color = (1, 0.3, 0.3, 1) # Red text
+        except Exception:
+            self.sync_label.text = "OFFLINE"
+            self.sync_label.color = (1, 0.3, 0.3, 1) # Red text
+            success = False
 
+        # Apply the final color to the button
+        if instance and hasattr(instance, 'background_color'):
+            if success:
+                instance.background_color = (0.2, 1, 0.2, 1) # Stay Green
+            else:
+                instance.background_color = (1, 0.2, 0.2, 1) # Turn Red
+            
+            # Reset back to white after a delay
+            Clock.schedule_once(lambda d: setattr(instance, 'background_color', (1, 1, 1, 1)), 1.0)
+            
     def force_download_confirmed(self):
         self.sync_now()
 
     def confirm_action(self, msg, callback):
-        c = BoxLayout(orientation='vertical', padding=dp(10))
-        c.add_widget(Label(text=msg))
-        b = BoxLayout(size_hint_y=None, height=App.get_running_app().row_height, spacing=dp(10))
-        y = Button(text="YES", on_release=lambda x: (callback(), p.dismiss()))
-        n = Button(text="NO", on_release=lambda x: p.dismiss())
-        b.add_widget(n); b.add_widget(y); c.add_widget(b)
-        p = Popup(title="Confirm", content=c, size_hint=(0.8, 0.3)); p.open()
+        app = App.get_running_app()
+        s_font = app.f_size
+
+        c = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        c.add_widget(Label(text=msg, font_size=s_font, halign='center', valign='middle'))
+        b = BoxLayout(size_hint_y=None, height=app.row_height, spacing=dp(10))
+        y = Button(text="YES", font_size=s_font, bold=True, 
+                   on_release=lambda x: (callback(), p.dismiss()))
+        n = Button(text="NO", font_size=s_font, bold=True, 
+                   on_release=lambda x: p.dismiss())
+
+        b.add_widget(n)
+        b.add_widget(y)
+        c.add_widget(b)
+        
+        p = Popup(title="Confirm", content=c, size_hint=(0.8, 0.3))
+        p.open()
 
     def update_stats(self):
         items = [i for i in self.all_lists.get(self.active_list_name, []) if isinstance(i, dict) and i.get('name') != "PLACEHOLDER"]
@@ -583,13 +694,29 @@ class ShoppingApp(App):
         n = f"List {len(self.all_lists)+1}"
         self.all_lists[n] = [{'name': 'PLACEHOLDER', 'done': False, 'cat': 'Uncategorized'}]
         self.active_list_name = n; self.save_data(); self.refresh_ui()
+
     def rename_list_popup(self, x):
+        app = App.get_running_app()
+        s_font = app.f_size
+        
         c = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        inp = TextInput(text=self.active_list_name, multiline=False, size_hint_y=None, height=App.get_running_app().row_height)
-        btn = Button(text="SAVE", size_hint_y=None, height=App.get_running_app().row_height)
-        c.add_widget(inp); c.add_widget(btn); p = Popup(title="Rename", content=c, size_hint=(0.8, 0.4))
-        def r(x): self.all_lists[inp.text] = self.all_lists.pop(self.active_list_name); self.active_list_name = inp.text; self.save_data(); self.refresh_ui(); p.dismiss()
-        btn.bind(on_release=r); p.open()
+        inp = TextInput(text=self.active_list_name, multiline=False, 
+                        size_hint_y=None, height=app.row_height, font_size=s_font)
+        btn = Button(text="SAVE", size_hint_y=None, height=app.row_height, 
+                     bold=True, font_size=s_font)
+        
+        c.add_widget(inp)
+        c.add_widget(btn)
+        p = Popup(title="Rename List", content=c, size_hint=(0.8, 0.4))
+        
+        def r(x): 
+            self.all_lists[inp.text] = self.all_lists.pop(self.active_list_name)
+            self.active_list_name = inp.text
+            self.save_data(); self.refresh_ui(); p.dismiss()
+            
+        btn.bind(on_release=r)
+        p.open()
+
     def confirm_delete_list(self, x):
         if len(self.all_lists) > 1: self.confirm_action("Delete list?", self.delete_list)
     def delete_list(self):
