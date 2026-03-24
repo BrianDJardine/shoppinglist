@@ -1,5 +1,5 @@
 import json, os, shutil, requests, certifi
-from datetime import datetime
+from datetime import datetime, timedelta
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -295,12 +295,17 @@ class SettingsScreen(Screen):
         # Use a secondary font size (75% of main)
         s_font = app.f_size * 0.75
 
-        self.layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
+        self.layout = BoxLayout(
+            orientation='vertical', 
+            padding=[dp(15), 0, dp(15), dp(15)], 
+            spacing=dp(10)
+        )
         header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10))
+
         with header.canvas.before:
             Color(0.15, 0.15, 0.15, 1)
-            self.rect = Rectangle(size=header.size, pos=header.pos)
-        header.bind(size=self._update_header_rect, pos=self._update_header_rect)
+            self.header_rect = Rectangle(size=header.size, pos=header.pos)
+            header.bind(size=self._update_header_rect, pos=self._update_header_rect)
 
         back_btn = Button(background_normal='back.png', size_hint=(None, None), size=(dp(35), dp(35)), pos_hint={'center_y': 0.5})
         back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
@@ -313,6 +318,50 @@ class SettingsScreen(Screen):
         self.font_spinner.bind(text=lambda s, t: App.get_running_app().change_font_size(t))
         self.layout.add_widget(self.font_spinner)
 
+        # --- Use By Offset Setting ---
+        offset_row = BoxLayout(size_hint_y=None, height=dp(38), spacing=dp(10))
+        offset_lbl = Label(text="Use By Days:", font_size=s_font, halign='left')
+        offset_lbl.bind(size=offset_lbl.setter('text_size'))
+
+        # Stepper Controls Container
+        stepper_box = BoxLayout(size_hint_x=None, width=dp(113), spacing=dp(5))
+
+        # Minus Button
+        btn_minus = Button(
+            text="-", 
+            size_hint_x=None, 
+            width=dp(34), 
+            font_size=s_font * 1.2, # Kept ratio but based on smaller font
+            bold=True
+        )
+        btn_minus.bind(on_release=lambda x: self.change_offset(-1))
+
+        # The Number Display
+        self.offset_display = Label(
+            text=str(app.use_by_offset), 
+            font_size=s_font, 
+            bold=True
+        )
+        
+        # Plus Button: 45 * 0.75 = 34
+        btn_plus = Button(
+            text="+", 
+            size_hint_x=None, 
+            width=dp(34), 
+            font_size=s_font * 1.2, 
+            bold=True
+        )
+        btn_plus.bind(on_release=lambda x: self.change_offset(1))
+
+        stepper_box.add_widget(btn_minus)
+        stepper_box.add_widget(self.offset_display)
+        stepper_box.add_widget(btn_plus)
+
+        offset_row.add_widget(offset_lbl)
+        offset_row.add_widget(stepper_box)
+        self.layout.add_widget(offset_row)
+
+        # Family ID
         self.id_input = TextInput(multiline=False, size_hint_y=None, height=App.get_running_app().row_height, hint_text="Family ID...", font_size=s_font)
         self.layout.add_widget(self.id_input)
         save_btn = Button(text="UPDATE ID", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.6, 1, 1), bold=True, font_size=s_font)
@@ -330,6 +379,18 @@ class SettingsScreen(Screen):
         self.layout.add_widget(Widget())
         self.add_widget(self.layout)
 
+    def change_offset(self, direction):
+        app = App.get_running_app()
+        new_val = app.use_by_offset + direction
+        
+        if 0 <= new_val <= 9:
+            app.use_by_offset = new_val
+            self.offset_display.text = str(new_val)
+            # Save immediately so she doesn't lose it
+            app.save_settings()
+            # If you want the main screen to update instantly:
+            app.refresh_ui()
+
     def on_pre_enter(self):
         app = App.get_running_app()
         self.font_spinner.text = app.font_scale
@@ -339,8 +400,8 @@ class SettingsScreen(Screen):
         App.get_running_app().update_family_id(self.id_input.text.strip())
 
     def _update_header_rect(self, instance, value):
-        self.rect.pos = instance.pos
-        self.rect.size = instance.size
+        self.header_rect.pos = instance.pos
+        self.header_rect.size = instance.size
 
 # --- MAIN APP ---
 class ShoppingApp(App):
@@ -348,6 +409,7 @@ class ShoppingApp(App):
 
     def build(self):
         # Initial Scaling Setup
+        self.use_by_offset = 5
         self.font_scale = "Large"
         self.show_completed = False
         local_path = os.path.join(self.user_data_dir, "local_settings.json")
@@ -357,6 +419,7 @@ class ShoppingApp(App):
                     d = json.load(f)
                     self.font_scale = d.get('font_scale', 'Large')
                     self.family_id = d.get('family_id', 'DefaultFamily')
+                    self.use_by_offset = d.get('use_by_offset', 5)
             except: self.family_id = "DefaultFamily"
         else: self.family_id = "DefaultFamily"
 
@@ -419,9 +482,48 @@ class ShoppingApp(App):
         header_row.add_widget(icon_scroll)
         main_layout.add_widget(header_row)
 
+        # --- DATE CALCULATOR ROW ---
+        today_str = datetime.now().strftime("%a %d")
+        use_by_date = (datetime.now() + timedelta(days=5)).strftime("%a %d")
+
+        # Create a layout for the dates
+        self.date_row = BoxLayout(size_hint_y=None, height=self.row_height * 0.8, padding=[dp(10), 0])
+        
+        # Today's Label
+        self.today_lbl = Label(
+            text=f"Today: [color=888888]{today_str}[/color]", 
+            markup=True,
+            font_size=self.f_size * 0.9,
+            bold=True,
+            halign='left'
+        )
+        self.today_lbl.bind(size=self.today_lbl.setter('text_size'))
+        
+        # Use By Label
+        self.use_by_lbl = Label(
+            text=f"Use By: [color=ff5555]{use_by_date}[/color]", 
+            markup=True,
+            font_size=self.f_size * 0.9,
+            bold=True,
+            halign='right'
+        )
+        self.use_by_lbl.bind(size=self.use_by_lbl.setter('text_size'))
+
+        self.date_row.add_widget(self.today_lbl)
+        self.date_row.add_widget(self.use_by_lbl)
+        
+        # Add it to the main layout
+        main_layout.add_widget(self.date_row)
+
         # INPUT
-        input_box = BoxLayout(size_hint_y=None, height=self.row_height, spacing=dp(5))
-        self.item_input = TextInput(hint_text='Add item...', multiline=False, font_size=self.f_size)
+        input_height = self.row_height * 0.75
+        input_box = BoxLayout(size_hint_y=None, height=input_height, spacing=dp(5))
+        self.item_input = TextInput(
+            hint_text='Add item...', 
+            multiline=False, 
+            font_size=self.f_size,
+            size_hint_x=0.7
+        )
         self.item_input.bind(text=self.on_type_prediction)
 
         add_btn = Button(
@@ -504,6 +606,16 @@ class ShoppingApp(App):
             json.dump(local, f)
         self.refresh_ui()
 
+    def save_settings(self):
+        settings_data = {
+            'font_size': self.font_scale,
+            'family_id': self.family_id,
+            'use_by_offset': self.use_by_offset
+        }
+        with open(os.path.join(self.user_data_dir, "local_settings.json"), 'w') as f:
+            json.dump(settings_data, f)
+        self.refresh_ui()
+
     def load_data(self):
         self.categories = {'Uncategorized': {'order': 99, 'keywords': []}}
         self.all_lists = {'Groceries': [{"name": "PLACEHOLDER", "done": False, "cat": "Uncategorized"}]}
@@ -534,6 +646,20 @@ class ShoppingApp(App):
             json.dump({'all_lists': self.all_lists, 'categories': self.categories, 'active_list_name': self.active_list_name}, f)
 
     def refresh_ui(self, *args):
+
+        self.date_row.height = self.row_height * 0.8
+        
+        t_str = datetime.now().strftime("%a %d")
+        u_str = (datetime.now() + timedelta(days=self.use_by_offset)).strftime("%a %d")
+        
+        self.today_lbl.font_size = self.f_size * 0.9
+        self.today_lbl.text = f"Today: [color=888888]{t_str}[/color]"
+        
+        self.use_by_lbl.font_size = self.f_size * 0.9
+        self.use_by_lbl.text = f"Use By: [color=ff5555]{u_str}[/color]"
+
+        self.item_input.height = self.row_height * 0.75
+
         self.list_spinner.text = self.active_list_name
         self.list_spinner.values = list(self.all_lists.keys())        
         self.list_layout.clear_widgets()
