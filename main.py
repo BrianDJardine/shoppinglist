@@ -17,6 +17,7 @@ from kivy.metrics import dp, Metrics
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.spinner import SpinnerOption
+from kivy.uix.checkbox import CheckBox
 
 class CustomSpinnerOption(SpinnerOption):
     def __init__(self, **kwargs):
@@ -133,7 +134,8 @@ class CategoryScreen(Screen):
         self.container.add_widget(header)
 
         add_box = BoxLayout(size_hint_y=None, height=App.get_running_app().row_height, spacing=dp(5))
-        self.new_cat_input = TextInput(hint_text="New Category...", multiline=False, font_size=app.f_size)
+        self.new_cat_input = TextInput(hint_text="New Category...", multiline=False, font_size=app.f_size,
+                                       input_type='text', input_filter=None, keyboard_suggestions=True)
 
         add_btn = Button(
             text='ADD', 
@@ -240,7 +242,8 @@ class CategoryScreen(Screen):
 
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
         inp = TextInput(text=old_name, multiline=False, size_hint_y=None, 
-                        height=app.row_height, font_size=s_font)
+                        height=app.row_height, font_size=s_font, input_type='text',
+                        input_filter=None, keyboard_suggestions=True)
         content.add_widget(inp)
 
         btn = Button(text="UPDATE", size_hint_y=None, height=app.row_height, 
@@ -295,23 +298,27 @@ class SettingsScreen(Screen):
         # Use a secondary font size (75% of main)
         s_font = app.f_size * 0.75
 
-        self.layout = BoxLayout(
-            orientation='vertical', 
-            padding=[dp(15), 0, dp(15), dp(15)], 
-            spacing=dp(10)
-        )
-        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10))
+        # ROOT LAYOUT (The main container)
+        root = BoxLayout(orientation='vertical', padding=[dp(15), 0, dp(15), dp(15)])
+
+        # HEADER (Stays fixed at the top)
+        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(5))
 
         with header.canvas.before:
             Color(0.15, 0.15, 0.15, 1)
             self.header_rect = Rectangle(size=header.size, pos=header.pos)
-            header.bind(size=self._update_header_rect, pos=self._update_header_rect)
+        header.bind(size=self._update_header_rect, pos=self._update_header_rect)
 
         back_btn = Button(background_normal='back.png', size_hint=(None, None), size=(dp(35), dp(35)), pos_hint={'center_y': 0.5})
-        back_btn.bind(on_release=lambda x: setattr(App.get_running_app().sm, 'current', 'main'))
+        back_btn.bind(on_release=lambda x: setattr(app.sm, 'current', 'main'))
         header.add_widget(back_btn)
         header.add_widget(Label(text="SETTINGS", font_size=dp(18), bold=True))
-        self.layout.add_widget(header)
+        root.add_widget(header)
+
+        # SCROLLVIEW (For all the settings below the header)
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        self.layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(15))
+        self.layout.bind(minimum_height=self.layout.setter('height')) # Key for scrolling!
 
         self.layout.add_widget(Label(text="Display Text Size:", size_hint_y=None, height=dp(30), font_size=s_font))
         self.font_spinner = Spinner(text="Large", values=("Smallest", "Small", "Medium", "Large"), size_hint_y=None, height=app.row_height * 0.8, font_size=s_font, option_cls=CustomSpinnerOption)
@@ -361,23 +368,63 @@ class SettingsScreen(Screen):
         offset_row.add_widget(stepper_box)
         self.layout.add_widget(offset_row)
 
+       # Show Dates toggle
+        date_toggle_row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(10))
+        date_toggle_lbl = Label(text="Show Dates:", font_size=s_font, halign='left')
+        date_toggle_lbl.bind(size=date_toggle_lbl.setter('text_size'))
+        
+        self.date_checkbox = CheckBox(
+            active=app.show_dates, 
+            size_hint_x=None, 
+            width=dp(50),
+            color=(0.2, 0.6, 1, 1) # Blueish tint
+        )
+
+        with self.date_checkbox.canvas.before:
+            Color(0.3, 0.3, 0.3, 1)
+            side = dp(24)
+            # Initial positioning (will be updated by the bind immediately)
+            self.date_checkbox.cb_rect = Rectangle(
+                pos=(self.date_checkbox.center_x - side/2, self.date_checkbox.center_y - side/2),
+                size=(side, side)
+            )
+
+        self.date_checkbox.bind(pos=self._update_cb_rect, size=self._update_cb_rect)
+        self.date_checkbox.bind(active=self.on_toggle_dates)
+        
+        date_toggle_row.add_widget(date_toggle_lbl)
+        date_toggle_row.add_widget(self.date_checkbox)
+        self.layout.add_widget(date_toggle_row)
+
         # Family ID
-        self.id_input = TextInput(multiline=False, size_hint_y=None, height=App.get_running_app().row_height, hint_text="Family ID...", font_size=s_font)
+        self.id_input = TextInput(multiline=False, size_hint_y=None, height=App.get_running_app().row_height, 
+                                  hint_text="Family ID...", font_size=s_font, input_type='text',
+                                  input_filter=None, keyboard_suggestions=True)
         self.layout.add_widget(self.id_input)
         save_btn = Button(text="UPDATE ID", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.6, 1, 1), bold=True, font_size=s_font)
         save_btn.bind(on_release=self.apply_id_change)
         self.layout.add_widget(save_btn)
 
+        # Upload
         push_btn = Button(text="FORCE UPLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.2, 0.7, 0.3, 1), font_size=s_font)
         push_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Upload data?", App.get_running_app().save_data))
         self.layout.add_widget(push_btn)
 
+        # Download
         pull_btn = Button(text="FORCE DOWNLOAD", size_hint_y=None, height=App.get_running_app().row_height, background_color=(0.7, 0.5, 0.2, 1), font_size=s_font)
         pull_btn.bind(on_release=lambda x: App.get_running_app().confirm_action("Overwrite from cloud?", App.get_running_app().force_download_confirmed))
         self.layout.add_widget(pull_btn)
 
-        self.layout.add_widget(Widget())
-        self.add_widget(self.layout)
+        # Add the layout to the scrollview, and scrollview to root
+        scroll.add_widget(self.layout)
+        root.add_widget(scroll)
+        self.add_widget(root)
+
+    def on_toggle_dates(self, checkbox, value):
+        app = App.get_running_app()
+        app.show_dates = value
+        app.save_settings()
+        app.refresh_ui()
 
     def change_offset(self, direction):
         app = App.get_running_app()
@@ -395,6 +442,8 @@ class SettingsScreen(Screen):
         app = App.get_running_app()
         self.font_spinner.text = app.font_scale
         self.id_input.text = app.family_id
+        self.offset_display.text = str(app.use_by_offset)
+        self.date_checkbox.active = app.show_dates
 
     def apply_id_change(self, instance):
         App.get_running_app().update_family_id(self.id_input.text.strip())
@@ -403,6 +452,13 @@ class SettingsScreen(Screen):
         self.header_rect.pos = instance.pos
         self.header_rect.size = instance.size
 
+    def _update_cb_rect(self, instance, value):
+        # We want the background box to be 24dp
+        side = dp(24)
+        # Center the rectangle on the CheckBox's center
+        instance.cb_rect.pos = (instance.center_x - side/2, instance.center_y - side/2)
+        instance.cb_rect.size = (side, side)
+
 # --- MAIN APP ---
 class ShoppingApp(App):
     BASE_URL = "https://shoppinglist-eae1c-default-rtdb.europe-west1.firebasedatabase.app/protect_data/AppV1_Secure_99xCapybarasForever/"
@@ -410,6 +466,7 @@ class ShoppingApp(App):
     def build(self):
         # Initial Scaling Setup
         self.use_by_offset = 5
+        self.show_dates = True
         self.font_scale = "Large"
         self.show_completed = False
         local_path = os.path.join(self.user_data_dir, "local_settings.json")
@@ -420,6 +477,7 @@ class ShoppingApp(App):
                     self.font_scale = d.get('font_scale', 'Large')
                     self.family_id = d.get('family_id', 'DefaultFamily')
                     self.use_by_offset = d.get('use_by_offset', 5)
+                    self.show_dates = d.get('show_dates', True)
             except: self.family_id = "DefaultFamily"
         else: self.family_id = "DefaultFamily"
 
@@ -484,7 +542,7 @@ class ShoppingApp(App):
 
         # --- DATE CALCULATOR ROW ---
         today_str = datetime.now().strftime("%a %d")
-        use_by_date = (datetime.now() + timedelta(days=5)).strftime("%a %d")
+        use_by_date = (datetime.now() + timedelta(days=self.use_by_offset)).strftime("%a %d")
 
         # Create a layout for the dates
         self.date_row = BoxLayout(size_hint_y=None, height=self.row_height * 0.8, padding=[dp(10), 0])
@@ -522,7 +580,10 @@ class ShoppingApp(App):
             hint_text='Add item...', 
             multiline=False, 
             font_size=self.f_size,
-            size_hint_x=0.7
+            size_hint_x=0.7,
+            input_type='text',
+            input_filter=None,
+            keyboard_suggestions=True            
         )
         self.item_input.bind(text=self.on_type_prediction)
 
@@ -607,14 +668,16 @@ class ShoppingApp(App):
         self.refresh_ui()
 
     def save_settings(self):
+        # Ensure we use the same filename as the build method
+        local_path = os.path.join(self.user_data_dir, "local_settings.json")
         settings_data = {
-            'font_size': self.font_scale,
+            'font_scale': self.font_scale,
             'family_id': self.family_id,
-            'use_by_offset': self.use_by_offset
+            'use_by_offset': self.use_by_offset,
+            'show_dates': self.show_dates
         }
-        with open(os.path.join(self.user_data_dir, "local_settings.json"), 'w') as f:
+        with open(local_path, 'w') as f:
             json.dump(settings_data, f)
-        self.refresh_ui()
 
     def load_data(self):
         self.categories = {'Uncategorized': {'order': 99, 'keywords': []}}
@@ -647,8 +710,6 @@ class ShoppingApp(App):
 
     def refresh_ui(self, *args):
 
-        self.date_row.height = self.row_height * 0.8
-        
         t_str = datetime.now().strftime("%a %d")
         u_str = (datetime.now() + timedelta(days=self.use_by_offset)).strftime("%a %d")
         
@@ -657,6 +718,15 @@ class ShoppingApp(App):
         
         self.use_by_lbl.font_size = self.f_size * 0.9
         self.use_by_lbl.text = f"Use By: [color=ff5555]{u_str}[/color]"
+
+        if self.show_dates:
+            self.date_row.height = self.row_height * 0.8
+            self.date_row.opacity = 1  # Make it visible
+            self.date_row.disabled = False # Re-enable touches            
+        else:
+            self.date_row.height = 0    # Collapse the space
+            self.date_row.opacity = 0  # Hide the text
+            self.date_row.disabled = True # Prevent accidental ghost-clicks
 
         self.item_input.height = self.row_height * 0.75
 
@@ -872,7 +942,8 @@ class ShoppingApp(App):
         
         c = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
         inp = TextInput(text=self.active_list_name, multiline=False, 
-                        size_hint_y=None, height=app.row_height, font_size=s_font)
+                        size_hint_y=None, height=app.row_height, font_size=s_font,input_type='text',
+                        input_filter=None, keyboard_suggestions=True)
         btn = Button(text="SAVE", size_hint_y=None, height=app.row_height, 
                      bold=True, font_size=s_font)
         
