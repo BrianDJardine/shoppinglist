@@ -1,0 +1,21 @@
+# Buildozer build artifacts
+.buildozer/
+bin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Local app data (contains personal shopping data & family ID)
+*.json
+!cloud_master_data.json
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini

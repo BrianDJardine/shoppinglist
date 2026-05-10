@@ -1,4 +1,4 @@
-import json, os, shutil, requests, certifi
+import json, os, shutil, requests, certifi, uuid, threading, copy
 from datetime import datetime, timedelta
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -698,15 +698,93 @@ class ShoppingApp(App):
     def cloud_url(self):
         return f"{self.BASE_URL}{self.family_id}.json"
 
-    def save_data(self, instance=None):
-        try:
-            payload = { self.family_id: {'all_lists': self.all_lists, 'categories': self.categories, 'active_list_name': self.active_list_name} }
-            requests.put(self.cloud_url, json=payload, timeout=4, verify=certifi.where())
-            self.sync_label.text = f"Synced: {datetime.now().strftime('%H:%M')}"
-        except: self.sync_label.text = "Offline (Local Only)"
+    # ------------------------------------------------------------------
+    # Merge helpers
+    # ------------------------------------------------------------------
+    def _merge_items(self, local_items, cloud_items):
+        """Merge two item lists. Items with a UUID use newest-timestamp-wins.
+        Legacy items (no id) are merged by name; cloud wins on conflict."""
+        def is_tracked(i): return bool(i.get('id')) and i.get('name') != 'PLACEHOLDER'
+        def is_legacy(i):  return not i.get('id') and i.get('name') != 'PLACEHOLDER'
 
+        local_tracked = {i['id']: i for i in local_items if is_tracked(i)}
+        cloud_tracked = {i['id']: i for i in cloud_items if is_tracked(i)}
+        local_legacy  = [i for i in local_items if is_legacy(i)]
+        cloud_legacy  = [i for i in cloud_items  if is_legacy(i)]
+
+        # Tracked: newest last_modified wins
+        merged_tracked = {}
+        for item_id in set(local_tracked) | set(cloud_tracked):
+            l = local_tracked.get(item_id)
+            c = cloud_tracked.get(item_id)
+            if l and c:
+                merged_tracked[item_id] = l if l.get('last_modified', '') >= c.get('last_modified', '') else c
+            else:
+                merged_tracked[item_id] = l or c
+
+        # Legacy: merge by name, cloud wins on conflict, local adds any missing
+        legacy_by_name = {i.get('name', '').lower(): i for i in local_legacy}
+        for i in cloud_legacy:
+            legacy_by_name[i.get('name', '').lower()] = i
+
+        result = [{'name': 'PLACEHOLDER', 'done': False, 'cat': 'Uncategorized'}]
+        result += list(legacy_by_name.values())
+        result += list(merged_tracked.values())
+        return result
+
+    def _merge_all_lists(self, local_lists, cloud_lists):
+        """Merge all shopping lists from local and cloud."""
+        all_names = set(local_lists) | set(cloud_lists)
+        return {name: self._merge_items(local_lists.get(name, []), cloud_lists.get(name, [])) for name in all_names}
+
+    # ------------------------------------------------------------------
+    # Save / Sync
+    # ------------------------------------------------------------------
+    def _save_locally(self):
+        """Persist current state to the local JSON file."""
         with open(self.data_file, 'w') as f:
             json.dump({'all_lists': self.all_lists, 'categories': self.categories, 'active_list_name': self.active_list_name}, f)
+
+    def save_data(self, instance=None):
+        """Save locally right away, then upload to cloud with merge in a background thread."""
+        self._save_locally()
+        # Snapshot current state for the background thread
+        snap_lists  = copy.deepcopy(self.all_lists)
+        snap_cats   = copy.deepcopy(self.categories)
+        snap_active = self.active_list_name
+        threading.Thread(target=self._upload_merged, args=(snap_lists, snap_cats, snap_active), daemon=True).start()
+
+    def _upload_merged(self, local_lists, categories, active_list_name):
+        """Background thread: GET cloud, merge, PUT merged result back."""
+        try:
+            merged_lists = local_lists
+            res = requests.get(self.cloud_url, timeout=5, verify=certifi.where())
+            if res.status_code == 200:
+                data = res.json()
+                if data and self.family_id in data:
+                    cloud_lists  = data[self.family_id].get('all_lists', {})
+                    merged_lists = self._merge_all_lists(local_lists, cloud_lists)
+            payload = {self.family_id: {'all_lists': merged_lists, 'categories': categories, 'active_list_name': active_list_name}}
+            requests.put(self.cloud_url, json=payload, timeout=5, verify=certifi.where())
+            ml = merged_lists
+            now = datetime.now().strftime('%H:%M')
+            def _apply(dt):
+                self.all_lists = ml
+                self._save_locally()
+                self.sync_label.text  = f"Synced: {now}"
+                self.sync_label.color = (0.6, 0.6, 0.6, 1)
+                self.refresh_ui()
+            Clock.schedule_once(_apply)
+        except Exception:
+            Clock.schedule_once(lambda dt: self._set_sync_offline())
+
+    def _set_sync_offline(self):
+        self.sync_label.text  = "Offline (Local Only)"
+        self.sync_label.color = (1, 0.5, 0.3, 1)
+
+    def _set_sync_error(self, msg):
+        self.sync_label.text  = msg
+        self.sync_label.color = (1, 0.3, 0.3, 1)
 
     def refresh_ui(self, *args):
 
@@ -827,8 +905,18 @@ class ShoppingApp(App):
     def add_to_list(self, name, cat):
         target = self.all_lists[self.active_list_name]
         found = next((i for i in target if isinstance(i, dict) and i.get('name') == name.capitalize() and not i['done']), None)
-        if found: found['count'] = found.get('count', 1) + 1
-        else: target.append({'name': name.capitalize(), 'done': False, 'cat': cat, 'count': 1})
+        if found:
+            found['count'] = found.get('count', 1) + 1
+            found['last_modified'] = datetime.utcnow().isoformat()
+        else:
+            target.append({
+                'id':            str(uuid.uuid4()),
+                'name':          name.capitalize(),
+                'done':          False,
+                'cat':           cat,
+                'count':         1,
+                'last_modified': datetime.utcnow().isoformat()
+            })
         self.save_data(); self.refresh_ui()
 
     def toggle_completed(self, instance): 
@@ -858,41 +946,50 @@ class ShoppingApp(App):
             Clock.schedule_once(lambda dt: self._perform_sync(dt, instance), 0.3)
 
     def _perform_sync(self, dt, instance=None):
+        """Kick off a manual sync in a background thread."""
+        threading.Thread(target=self._do_sync, args=(instance,), daemon=True).start()
+
+    def _background_sync(self, dt):
+        """Silent background sync called every 30 seconds."""
+        threading.Thread(target=self._do_sync, args=(None,), daemon=True).start()
+
+    def _do_sync(self, button_instance):
+        """Core sync logic (background thread): GET → merge → PUT → apply."""
         success = False
         try:
             res = requests.get(self.cloud_url, timeout=5, verify=certifi.where())
             if res.status_code == 200:
                 data = res.json()
                 if data and self.family_id in data:
-                    cloud = data[self.family_id]
-                    self.all_lists = cloud.get('all_lists', self.all_lists)
-                    self.categories = cloud.get('categories', self.categories)
-                    self.active_list_name = cloud.get('active_list_name', self.active_list_name)
-                    
-                    self.refresh_ui()
-                    
-                    now = datetime.now().strftime("%H:%M")
-                    self.sync_label.text = f"Synced: {now}"
-                    # Make sure label is grey/white for success
-                    self.sync_label.color = (0.6, 0.6, 0.6, 1) 
+                    cloud        = data[self.family_id]
+                    cloud_lists  = cloud.get('all_lists', {})
+                    cloud_cats   = cloud.get('categories', self.categories)
+                    merged_lists = self._merge_all_lists(self.all_lists, cloud_lists)
+                    payload = {self.family_id: {'all_lists': merged_lists, 'categories': cloud_cats, 'active_list_name': self.active_list_name}}
+                    requests.put(self.cloud_url, json=payload, timeout=5, verify=certifi.where())
+                    ml   = merged_lists
+                    cats = cloud_cats
+                    now  = datetime.now().strftime('%H:%M')
+                    def _apply(dt):
+                        self.all_lists  = ml
+                        self.categories = cats
+                        self._save_locally()
+                        self.sync_label.text  = f"Synced: {now}"
+                        self.sync_label.color = (0.6, 0.6, 0.6, 1)
+                        self.refresh_ui()
+                    Clock.schedule_once(_apply)
                     success = True
             else:
-                self.sync_label.text = "Sync Error"
-                self.sync_label.color = (1, 0.3, 0.3, 1) # Red text
+                Clock.schedule_once(lambda dt: self._set_sync_error("Sync Error"))
         except Exception:
-            self.sync_label.text = "OFFLINE"
-            self.sync_label.color = (1, 0.3, 0.3, 1) # Red text
-            success = False
+            Clock.schedule_once(lambda dt: self._set_sync_error("OFFLINE"))
 
-        # Apply the final color to the button
-        if instance and hasattr(instance, 'background_color'):
-            if success:
-                instance.background_color = (0.2, 1, 0.2, 1) # Stay Green
-            else:
-                instance.background_color = (1, 0.2, 0.2, 1) # Turn Red
-            
-            # Reset back to white after a delay
-            Clock.schedule_once(lambda d: setattr(instance, 'background_color', (1, 1, 1, 1)), 1.0)
+        if button_instance and hasattr(button_instance, 'background_color'):
+            color = (0.2, 1, 0.2, 1) if success else (1, 0.2, 0.2, 1)
+            def _btn(dt):
+                button_instance.background_color = color
+                Clock.schedule_once(lambda d: setattr(button_instance, 'background_color', (1, 1, 1, 1)), 1.0)
+            Clock.schedule_once(_btn)
             
     def force_download_confirmed(self):
         self.sync_now()
@@ -923,13 +1020,22 @@ class ShoppingApp(App):
 
     def on_start(self):
         Clock.schedule_once(self.sync_now, 1)
+        Clock.schedule_interval(self._background_sync, 30)
 
     # Standard Helpers
     def switch_list(self, s, t): self.active_list_name = t; self.refresh_ui()
-    def mark_done(self, i): i['done'] = True; self.save_data(); self.refresh_ui()
+
+    def mark_done(self, i):
+        i['done'] = True
+        i['last_modified'] = datetime.utcnow().isoformat()
+        self.save_data(); self.refresh_ui()
+
     def adjust_quantity(self, i, a):
         i['count'] = i.get('count', 1) + a
-        if i['count'] < 1: self.all_lists[self.active_list_name].remove(i)
+        if i['count'] < 1:
+            self.all_lists[self.active_list_name].remove(i)
+        else:
+            i['last_modified'] = datetime.utcnow().isoformat()
         self.save_data(); self.refresh_ui()
     def create_new_list(self, x):
         n = f"List {len(self.all_lists)+1}"
