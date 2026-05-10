@@ -683,6 +683,7 @@ class ShoppingApp(App):
         self.categories = {'Uncategorized': {'order': 99, 'keywords': []}}
         self.all_lists = {'Groceries': [{"name": "PLACEHOLDER", "done": False, "cat": "Uncategorized"}]}
         self.active_list_name = 'Groceries'
+        self.tombstones = {}  # {item_id: deletion_iso_timestamp}
         self.data_file = os.path.join(self.user_data_dir, f"shopping_data_{self.family_id}.json")
 
         if os.path.exists(self.data_file):
@@ -692,6 +693,7 @@ class ShoppingApp(App):
                     self.all_lists = local_data.get('all_lists', self.all_lists)
                     self.categories = local_data.get('categories', self.categories)
                     self.active_list_name = local_data.get('active_list_name', self.active_list_name)
+                    self.tombstones = local_data.get('tombstones', {})
             except: pass
 
     @property
@@ -712,15 +714,19 @@ class ShoppingApp(App):
         local_legacy  = [i for i in local_items if is_legacy(i)]
         cloud_legacy  = [i for i in cloud_items  if is_legacy(i)]
 
-        # Tracked: newest last_modified wins
+        # Tracked: newest last_modified wins, but respect tombstones
         merged_tracked = {}
         for item_id in set(local_tracked) | set(cloud_tracked):
             l = local_tracked.get(item_id)
             c = cloud_tracked.get(item_id)
             if l and c:
-                merged_tracked[item_id] = l if l.get('last_modified', '') >= c.get('last_modified', '') else c
+                candidate = l if l.get('last_modified', '') >= c.get('last_modified', '') else c
             else:
-                merged_tracked[item_id] = l or c
+                candidate = l or c
+            # Skip if tombstoned (deletion timestamp >= item's last_modified)
+            tomb_ts = self.tombstones.get(item_id, '')
+            if candidate and (not tomb_ts or tomb_ts < candidate.get('last_modified', '')):
+                merged_tracked[item_id] = candidate
 
         # Legacy: merge by name, cloud wins on conflict, local adds any missing
         legacy_by_name = {i.get('name', '').lower(): i for i in local_legacy}
@@ -733,9 +739,14 @@ class ShoppingApp(App):
         return result
 
     def _merge_all_lists(self, local_lists, cloud_lists):
-        """Merge all shopping lists from local and cloud."""
-        all_names = set(local_lists) | set(cloud_lists)
-        return {name: self._merge_items(local_lists.get(name, []), cloud_lists.get(name, [])) for name in all_names}
+        """Merge shopping lists during a sync pull.
+        Cloud is the authority for which lists exist — lists deleted on one device
+        are removed from cloud via direct PUT, so the other device drops them here.
+        Items within each cloud list are merged with local data (newest-wins)."""
+        return {
+            name: self._merge_items(local_lists.get(name, []), cloud_lists[name])
+            for name in cloud_lists  # only lists cloud knows about
+        }
 
     # ------------------------------------------------------------------
     # Save / Sync
@@ -743,38 +754,29 @@ class ShoppingApp(App):
     def _save_locally(self):
         """Persist current state to the local JSON file."""
         with open(self.data_file, 'w') as f:
-            json.dump({'all_lists': self.all_lists, 'categories': self.categories, 'active_list_name': self.active_list_name}, f)
+            json.dump({'all_lists': self.all_lists, 'categories': self.categories,
+                       'active_list_name': self.active_list_name, 'tombstones': self.tombstones}, f)
 
     def save_data(self, instance=None):
-        """Save locally right away, then upload to cloud with merge in a background thread."""
+        """Save locally immediately, then upload local state directly to cloud (no merge)."""
         self._save_locally()
-        # Snapshot current state for the background thread
         snap_lists  = copy.deepcopy(self.all_lists)
         snap_cats   = copy.deepcopy(self.categories)
         snap_active = self.active_list_name
-        threading.Thread(target=self._upload_merged, args=(snap_lists, snap_cats, snap_active), daemon=True).start()
+        snap_tombs  = copy.deepcopy(self.tombstones)
+        threading.Thread(target=self._upload_direct, args=(snap_lists, snap_cats, snap_active, snap_tombs), daemon=True).start()
 
-    def _upload_merged(self, local_lists, categories, active_list_name):
-        """Background thread: GET cloud, merge, PUT merged result back."""
+    def _upload_direct(self, local_lists, categories, active_list_name, tombstones):
+        """Background thread: PUT local state straight to cloud with no merge."""
         try:
-            merged_lists = local_lists
-            res = requests.get(self.cloud_url, timeout=5, verify=certifi.where())
-            if res.status_code == 200:
-                data = res.json()
-                if data and self.family_id in data:
-                    cloud_lists  = data[self.family_id].get('all_lists', {})
-                    merged_lists = self._merge_all_lists(local_lists, cloud_lists)
-            payload = {self.family_id: {'all_lists': merged_lists, 'categories': categories, 'active_list_name': active_list_name}}
+            payload = {self.family_id: {'all_lists': local_lists, 'categories': categories,
+                                        'active_list_name': active_list_name, 'tombstones': tombstones}}
             requests.put(self.cloud_url, json=payload, timeout=5, verify=certifi.where())
-            ml = merged_lists
             now = datetime.now().strftime('%H:%M')
-            def _apply(dt):
-                self.all_lists = ml
-                self._save_locally()
-                self.sync_label.text  = f"Synced: {now}"
-                self.sync_label.color = (0.6, 0.6, 0.6, 1)
-                self.refresh_ui()
-            Clock.schedule_once(_apply)
+            Clock.schedule_once(lambda dt: (
+                setattr(self.sync_label, 'text',  f'Synced: {now}'),
+                setattr(self.sync_label, 'color', (0.6, 0.6, 0.6, 1))
+            ))
         except Exception:
             Clock.schedule_once(lambda dt: self._set_sync_offline())
 
@@ -925,10 +927,18 @@ class ShoppingApp(App):
         self.refresh_ui()
 
     def clear_completed(self, instance=None):
+        now = datetime.utcnow().isoformat()
+        for item in self.all_lists.get(self.active_list_name, []):
+            if item.get('done') and item.get('id'):
+                self.tombstones[item['id']] = now
         self.all_lists[self.active_list_name] = [i for i in self.all_lists[self.active_list_name] if not i.get('done') or i.get('name') == "PLACEHOLDER"]
         self.save_data(); self.refresh_ui()
 
     def clear_entire_list(self):
+        now = datetime.utcnow().isoformat()
+        for item in self.all_lists.get(self.active_list_name, []):
+            if item.get('id'):
+                self.tombstones[item['id']] = now
         self.all_lists[self.active_list_name] = [{'name': 'PLACEHOLDER', 'done': False, 'cat': 'Uncategorized'}]
         self.save_data(); self.refresh_ui()
 
@@ -954,7 +964,7 @@ class ShoppingApp(App):
         threading.Thread(target=self._do_sync, args=(None,), daemon=True).start()
 
     def _do_sync(self, button_instance):
-        """Core sync logic (background thread): GET → merge → PUT → apply."""
+        """Core sync logic (background thread): GET → merge tombstones → merge items → PUT → apply."""
         success = False
         try:
             res = requests.get(self.cloud_url, timeout=5, verify=certifi.where())
@@ -964,8 +974,17 @@ class ShoppingApp(App):
                     cloud        = data[self.family_id]
                     cloud_lists  = cloud.get('all_lists', {})
                     cloud_cats   = cloud.get('categories', self.categories)
+                    cloud_tombs  = cloud.get('tombstones', {})
+                    # Merge tombstones: union of both, newest timestamp per ID wins
+                    merged_tombs = dict(self.tombstones)
+                    for tid, ts in cloud_tombs.items():
+                        if tid not in merged_tombs or ts > merged_tombs[tid]:
+                            merged_tombs[tid] = ts
+                    self.tombstones = merged_tombs  # apply before merge so _merge_items can use them
                     merged_lists = self._merge_all_lists(self.all_lists, cloud_lists)
-                    payload = {self.family_id: {'all_lists': merged_lists, 'categories': cloud_cats, 'active_list_name': self.active_list_name}}
+                    payload = {self.family_id: {'all_lists': merged_lists, 'categories': cloud_cats,
+                                                'active_list_name': self.active_list_name,
+                                                'tombstones': merged_tombs}}
                     requests.put(self.cloud_url, json=payload, timeout=5, verify=certifi.where())
                     ml   = merged_lists
                     cats = cloud_cats
@@ -1033,6 +1052,8 @@ class ShoppingApp(App):
     def adjust_quantity(self, i, a):
         i['count'] = i.get('count', 1) + a
         if i['count'] < 1:
+            if i.get('id'):
+                self.tombstones[i['id']] = datetime.utcnow().isoformat()
             self.all_lists[self.active_list_name].remove(i)
         else:
             i['last_modified'] = datetime.utcnow().isoformat()
